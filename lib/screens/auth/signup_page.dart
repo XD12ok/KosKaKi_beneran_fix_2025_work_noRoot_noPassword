@@ -5,7 +5,7 @@ import 'package:koskaki/widgets/kk_textfield.dart';
 import 'phone_input.dart';
 
 class SignUpPage extends StatelessWidget {
-  final String role; // role dari halaman welcome
+  final String role;
 
   const SignUpPage({super.key, required this.role});
 
