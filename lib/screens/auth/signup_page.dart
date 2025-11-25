@@ -17,7 +17,7 @@ class SignUpPage extends StatelessWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(      // ⬅️ TAMBAHKAN INI BIAR BISA SCROLL
+        child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
