@@ -6,8 +6,8 @@ class KKLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Image.asset(
-      "assets/logo.png",
-      height: 80,
+      "assets/logo1.png",
+      height: 90,
     );
   }
 }
