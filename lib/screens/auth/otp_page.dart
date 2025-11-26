@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:pinput/pinput.dart';
 import '/widgets/kk_button.dart';
 import '/theme/app_theme.dart';
+import 'package:koskaki/screens/HomePage.dart';
 
 class OtpPage extends StatelessWidget {
   final String role;
@@ -72,14 +73,17 @@ class OtpPage extends StatelessWidget {
               onPressed: () {
                 final otp = pinController.text.trim();
 
-                // nanti diceh fb di bekend
+                // nanti dicek di backend
                 print("Email: $email");
                 print("Password: $password");
                 print("Role: $role");
                 print("Phone: $phone");
                 print("OTP: $otp");
 
-                // lanjut halaman berikutnya icikiwir
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HomePage()),
+                );
               },
             ),
             const SizedBox(height: 20),
