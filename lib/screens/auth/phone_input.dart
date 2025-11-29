@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'otp_page.dart';
-import '/widgets/kk_button.dart';
-import '/theme/app_theme.dart';
+import 'package:koskaki/widgets/kk_button.dart';
+import 'package:koskaki/theme/app_theme.dart';
 import 'package:country_code_picker/country_code_picker.dart';
 
 class PhoneInput extends StatelessWidget {

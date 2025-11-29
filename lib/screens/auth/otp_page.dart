@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:koskaki/theme/app_theme.dart';
 import 'package:pinput/pinput.dart';
-import '/widgets/kk_button.dart';
-import '/theme/app_theme.dart';
+import 'package:koskaki/widgets/kk_button.dart';
+import 'package:koskaki/theme/app_theme.dart';
 
 class OtpPage extends StatelessWidget {
   final String role;
