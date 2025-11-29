@@ -151,6 +151,7 @@ class HomePage extends StatelessWidget {
         border: Border.all(color: Colors.grey.shade300),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -164,7 +165,7 @@ class HomePage extends StatelessWidget {
 
           const SizedBox(width: 12),
 
-          Expanded(
+          Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -179,12 +180,13 @@ class HomePage extends StatelessWidget {
                   padding:
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF020477),
+                    color: Color(0xFF020477),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
                     "14 Feb 2024 – 14 Okt 2024",
                     style: TextStyle(color: Colors.white, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
 
