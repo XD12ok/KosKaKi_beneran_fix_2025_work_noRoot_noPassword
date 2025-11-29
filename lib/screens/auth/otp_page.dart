@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:koskaki/theme/app_theme.dart';
+import 'package:koskaki/screens/HomePage.dart';
 import 'package:pinput/pinput.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/theme/app_theme.dart';
@@ -71,22 +71,51 @@ class OtpPage extends StatelessWidget {
             KKButton(
               text: "Verifikasi",
               onPressed: () {
-                final otp = pinController.text.trim();
-
-                // nanti diceh fb di bekend
-                print("Email: $email");
-                print("Password: $password");
-                print("Role: $role");
-                print("Phone: $phone");
-                print("OTP: $otp");
-
-                // lanjut halaman berikutnya icikiwir
+                _verifyOtp(
+                  context,
+                  pinController.text.trim(),
+                  email,
+                  password,
+                  role,
+                  phone,
+                );
               },
             ),
+
             const SizedBox(height: 20),
           ],
         ),
       ),
     );
   }
+}
+
+/// Fungsi terpisah supaya tidak async di onPressed
+void _verifyOtp(
+    BuildContext context,
+    String otp,
+    String email,
+    String password,
+    String role,
+    String phone,
+    ) {
+  print("OTP: $otp");
+  print("Email: $email");
+  print("Password: $password");
+  print("Role: $role");
+  print("Phone: $phone");
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => HomePage(
+        // role: role,
+        // email: email,
+        // password: password,
+        // phone: fullPhone,
+      ),
+    ),
+  );
+
+  // Lanjutkan Firebase OTP verify atau backend logic
 }

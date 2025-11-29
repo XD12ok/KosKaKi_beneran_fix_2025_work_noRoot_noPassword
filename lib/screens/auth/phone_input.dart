@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'otp_page.dart';
+import 'package:koskaki/screens/auth/otp_page.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/theme/app_theme.dart';
 import 'package:country_code_picker/country_code_picker.dart';
@@ -66,18 +66,13 @@ class PhoneInput extends StatelessWidget {
             KKButton(
               text: "Lanjut",
               onPressed: () {
-                final fullPhone = "$countryCode${phoneController.text.trim()}";
-
-                Navigator.push(
+                _goToOtp(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => OtpPage(
-                      role: role,
-                      email: email,
-                      password: password,
-                      phone: fullPhone,
-                    ),
-                  ),
+                  role,
+                  email,
+                  password,
+                  countryCode,
+                  phoneController.text.trim(),
                 );
               },
             ),
@@ -86,4 +81,28 @@ class PhoneInput extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Function terpisah agar onPressed tidak async
+void _goToOtp(
+    BuildContext context,
+    String role,
+    String email,
+    String password,
+    String code,
+    String phone,
+    ) {
+  final fullPhone = "$code$phone";
+
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => OtpPage(
+        role: role,
+        email: email,
+        password: password,
+        phone: fullPhone,
+      ),
+    ),
+  );
 }

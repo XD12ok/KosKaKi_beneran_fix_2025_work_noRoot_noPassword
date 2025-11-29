@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "3111184968",
+    "project_id": "koskaki-pjbl",
+    "storage_bucket": "koskaki-pjbl.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:3111184968:android:47d3f3eb3d0b018f41067d",
+        "android_client_info": {
+          "package_name": "com.example.koskaki"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBtz6HVfLRYKdxpWb416HVVJQ5J4u8lhcE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

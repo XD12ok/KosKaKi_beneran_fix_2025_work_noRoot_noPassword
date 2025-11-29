@@ -11,25 +11,30 @@ class WelcomeScreen extends StatefulWidget {
 class _WelcomeScreenState extends State<WelcomeScreen> {
   bool startAnimation = false;
   bool showRoles = false;
+  bool hideStartText = false;
 
   @override
   Widget build(BuildContext context) {
-    final height = MediaQuery.of(context).size.height;
+    final height = MediaQuery
+        .of(context)
+        .size
+        .height;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-          // logo
+
+          /// Logo Mambu
           Positioned(
-            top: 100,
+            top: 80,
             left: 0,
             right: 0,
             child: Column(
               children: [
                 Image.asset(
-                  "assets/logo.png",
-                  height: 120,
+                  "assets/logo1.png",
+                  height: 150,
                 ),
                 const SizedBox(height: 10),
                 const Text(
@@ -44,36 +49,38 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
 
-          // animasi orng turun
+          /// Orang
           AnimatedPositioned(
             duration: const Duration(milliseconds: 700),
             curve: Curves.easeOut,
-            bottom: startAnimation ? -(height * 0.25) : 30,
+            bottom: startAnimation ? 140 : 200,
             left: 0,
             right: 0,
             child: Image.asset(
               "assets/people.png",
-              height: 260,
+              height: 300,
             ),
           ),
 
-          // wave biru
+          /// Biru Biru Gatel
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 700),
+            duration: const Duration(milliseconds: 900),
             curve: Curves.easeInOut,
-            bottom: startAnimation ? 0 : -300,
-            left: -100,
-            right: -100,
-            child: Container(
-              height: 600,
-              decoration: const BoxDecoration(
-                color: Color(0xFF0A0E50),
-                shape: BoxShape.circle,
+            bottom: startAnimation ? -250 : -150,
+            left: startAnimation ? -220 : -140,
+            right: startAnimation ? -220 : -140,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeInOut,
+              height: startAnimation ? 700 : 395,
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A0E50),
+                borderRadius: BorderRadius.circular(800), // jare gpt ngene
               ),
             ),
           ),
 
-          // ayomulai btn
+          /// Tombol Ayo Mulai
           AnimatedPositioned(
             duration: const Duration(milliseconds: 700),
             curve: Curves.easeOut,
@@ -82,42 +89,45 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             right: 30,
             child: Column(
               children: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  onPressed: () {
-                    setState(() => startAnimation = true);
+                    onPressed: () {
+                      setState(() => startAnimation = true);
 
-                    Future.delayed(const Duration(milliseconds: 700), () {
-                      setState(() => showRoles = true);
-                    });
-                  },
-                  child: const Text(
-                    "Ayo Mulai!",
-                    style: TextStyle(fontSize: 17),
+                      Future.delayed(const Duration(milliseconds: 700), () {
+                        setState(() => showRoles = true);
+                      });
+                    },
+                    child: const Text(
+                      "Ayo Mulai!",
+                      style: TextStyle(fontSize: 17),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
                 const Text(
                   "Buat manajemen anda lebih baik dengan KosKaKi",
-                  style: TextStyle(color: Colors.black54),
-                )
+                  style: TextStyle(color: Colors.white),
+                ),
               ],
             ),
           ),
 
-          // role btn
+          /// Tombol Pemilik & Anak Kos
           if (showRoles)
             AnimatedPositioned(
               duration: const Duration(milliseconds: 700),
               curve: Curves.easeOutBack,
-              bottom: 150,
+              bottom: 50,
               left: 30,
               right: 30,
               child: Column(
@@ -129,12 +139,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const SignUpPage(role: "pemilik"),
+                          builder: (_) => const SignUpPage(role: "Pemilik"),
                         ),
                       );
                     },
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
                   _roleButton(
                     "Masuk sebagai penghuni",
                     Icons.people,
@@ -142,7 +152,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const SignUpPage(role: "penghuni"),
+                          builder: (_) =>
+                          const SignUpPage(role: "Penghuni"),
                         ),
                       );
                     },
@@ -155,25 +166,34 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     );
   }
 
-  // Tombol role
-  Widget _roleButton(String text, IconData icon, VoidCallback onTap) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(30),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(30),
-        ),
+  Widget _roleButton(String title, IconData icon, VoidCallback onTap) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(50),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(50),
+        onTap: onTap,
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.blue),
-            const SizedBox(width: 10),
-            Text(
-              text,
-              style: const TextStyle(fontSize: 16, color: Colors.black87),
+            Icon(
+              icon,
+              size: 40,
+              color: Colors.blue,
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black,
+                ),
+              ),
             ),
           ],
         ),
