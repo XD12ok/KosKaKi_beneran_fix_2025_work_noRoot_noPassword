@@ -4,7 +4,7 @@ import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/theme/app_theme.dart';
 import 'package:country_code_picker/country_code_picker.dart';
 
-class PhoneInput extends StatelessWidget {
+class PhoneInput extends StatefulWidget {
   final String role;
   final String email;
   final String password;
@@ -17,10 +17,15 @@ class PhoneInput extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final phoneController = TextEditingController();
-    String countryCode = "+62";
+  State<PhoneInput> createState() => _PhoneInputState();
+}
 
+class _PhoneInputState extends State<PhoneInput> {
+  final phoneController = TextEditingController();
+  String countryCode = "+62";
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(color: AppTheme.primary),
@@ -43,18 +48,20 @@ class PhoneInput extends StatelessWidget {
                 CountryCodePicker(
                   initialSelection: "ID",
                   favorite: const ["+62", "ID"],
-                  showDropDownButton: true,
                   onChanged: (code) {
-                    countryCode = code.dialCode ?? "+62";
+                    setState(() {
+                      countryCode = code.dialCode ?? "+62";
+                    });
                   },
                 ),
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: TextField(
                     controller: phoneController,
                     keyboardType: TextInputType.phone,
                     decoration: const InputDecoration(
-                      hintText: "8xxxxxxx",
+                      hintText: "8xxxxxxx", // tanpa 0
                     ),
                   ),
                 ),
@@ -66,13 +73,29 @@ class PhoneInput extends StatelessWidget {
             KKButton(
               text: "Lanjut",
               onPressed: () {
+                final rawPhone = phoneController.text.trim();
+
+                if (rawPhone.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Nomor telepon tidak boleh kosong")),
+                  );
+                  return;
+                }
+
+                if (rawPhone.length < 8) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Nomor telepon tidak valid")),
+                  );
+                  return;
+                }
+
                 _goToOtp(
                   context,
-                  role,
-                  email,
-                  password,
+                  widget.role,
+                  widget.email,
+                  widget.password,
                   countryCode,
-                  phoneController.text.trim(),
+                  rawPhone,
                 );
               },
             ),
@@ -83,16 +106,19 @@ class PhoneInput extends StatelessWidget {
   }
 }
 
-/// Function terpisah agar onPressed tidak async
 void _goToOtp(
     BuildContext context,
     String role,
     String email,
     String password,
     String code,
-    String phone,
+    String rawPhone,
     ) {
-  final fullPhone = "$code$phone";
+  if (rawPhone.startsWith("0")) {
+    rawPhone = rawPhone.substring(1);
+  }
+
+  final fullPhone = "$code$rawPhone";
 
   Navigator.push(
     context,
