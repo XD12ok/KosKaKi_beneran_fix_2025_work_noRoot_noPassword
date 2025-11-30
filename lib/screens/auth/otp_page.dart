@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:pinput/pinput.dart';
-import '/widgets/kk_button.dart';
-import '/theme/app_theme.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:koskaki/screens/HomePage.dart';
+import 'package:pinput/pinput.dart';
+import 'package:koskaki/widgets/kk_button.dart';
+import 'package:koskaki/theme/app_theme.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class OtpPage extends StatelessWidget {
+
+class OtpPage extends StatefulWidget {
   final String role;
   final String email;
   final String password;
@@ -19,9 +22,105 @@ class OtpPage extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final pinController = TextEditingController();
+  State<OtpPage> createState() => _OtpPageState();
+}
 
+class _OtpPageState extends State<OtpPage> {
+  final pinController = TextEditingController();
+  String verificationId = "";
+  bool isSending = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _sendOtp();
+  }
+
+  /// -----------------------
+  ///   KIRIM OTP KE NOMOR
+  /// -----------------------
+  void _sendOtp() async {
+    print("Mengirim OTP ke: ${widget.phone}");
+
+    await FirebaseAuth.instance.verifyPhoneNumber(
+      phoneNumber: widget.phone,
+      verificationCompleted: (PhoneAuthCredential credential) {
+        print("verificationCompleted");
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        print("verificationFailed: ${e.message}");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Gagal mengirim OTP: ${e.message}")),
+        );
+      },
+      codeSent: (String verId, int? resendToken) {
+        print("OTP terkirim! verificationId = $verId");
+        setState(() {
+          verificationId = verId;
+          isSending = false;
+        });
+      },
+      codeAutoRetrievalTimeout: (String verId) {
+        print("Timeout: $verId");
+      },
+    );
+  }
+
+  /// -----------------------
+  ///   VERIFIKASI OTP
+  /// -----------------------
+  void _verifyOtp() async {
+    final smsCode = pinController.text.trim();
+
+    if (smsCode.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Kode OTP tidak lengkap")),
+      );
+      return;
+    }
+
+    try {
+      final credential = PhoneAuthProvider.credential(
+        verificationId: verificationId,
+        smsCode: smsCode,
+      );
+
+      // LOGIN / VERIFIKASI
+      final userCredential =
+      await FirebaseAuth.instance.signInWithCredential(credential);
+      final uid = userCredential.user!.uid;
+
+      // Simpan ke Supabase
+      await Supabase.instance.client.from('Users').insert({
+        'id': uid,
+        'Email': widget.email,
+        'Phone': widget.phone,
+        'Role': widget.role,
+        'Created_at': DateTime.now().toIso8601String(),
+      });
+
+      // SUKSES
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Nomor berhasil diverifikasi!")),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HomePage(),
+        ),
+      );
+
+    } catch (e) {
+      print("OTP error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Kode OTP salah")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         leading: BackButton(color: AppTheme.primary),
@@ -40,7 +139,7 @@ class OtpPage extends StatelessWidget {
             const SizedBox(height: 12),
 
             Text(
-              "Kami telah mengirim kode verifikasi ke:\n$phone",
+              "Kami telah mengirim kode verifikasi ke:\n${widget.phone}",
               textAlign: TextAlign.center,
             ),
 
@@ -61,31 +160,42 @@ class OtpPage extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            const Text(
-              "Tidak menerima kode? Kirim ulang",
+            isSending
+                ? const Text(
+              "Mengirim kode...",
               style: TextStyle(color: Colors.grey),
+            )
+                : GestureDetector(
+              onTap: () {
+                setState(() {
+                  isSending = true;
+                });
+                _sendOtp();
+              },
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(color: Colors.grey),
+                  children: [
+                    const TextSpan(text: "Tidak menerima kode? "),
+                    TextSpan(
+                      text: "Kirim ulang",
+                      style: const TextStyle(
+                        color: Colors.blue,                 // tombol biru
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
 
             const Spacer(),
 
             KKButton(
               text: "Verifikasi",
-              onPressed: () {
-                final otp = pinController.text.trim();
-
-                // nanti dicek di backend
-                print("Email: $email");
-                print("Password: $password");
-                print("Role: $role");
-                print("Phone: $phone");
-                print("OTP: $otp");
-
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const HomePage()),
-                );
-              },
+              onPressed: _verifyOtp,
             ),
+
             const SizedBox(height: 20),
           ],
         ),
