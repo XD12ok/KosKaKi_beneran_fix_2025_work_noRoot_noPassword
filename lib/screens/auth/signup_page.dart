@@ -139,7 +139,9 @@ class SignUpPage extends StatelessWidget {
                       // Redirect ke LoginPage
                       Navigator.pushReplacement(
                         context,
-                        MaterialPageRoute(builder: (_) => const LoginPage()),
+                        MaterialPageRoute(
+                          builder: (_) => LoginPage(role: role),
+                        ),
                       );
                     } catch (e) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -160,13 +162,12 @@ class SignUpPage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const LoginPage(),
+                            builder: (_) => LoginPage(role: role),
                           ),
                         );
                       },
                       child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                            vertical: 4, horizontal: 4),
+                        padding: EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                         child: Text(
                           "Masuk",
                           style: TextStyle(

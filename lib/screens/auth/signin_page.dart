@@ -7,10 +7,14 @@ import 'signup_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-import '';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final String role;
+
+  const LoginPage({
+    super.key,
+    required this.role,
+  });
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -80,7 +84,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 22),
 
-              // Error message
               if (errorMessage.isNotEmpty)
                 Center(
                   child: Padding(
@@ -96,7 +99,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
 
-              // Tombol login
               KKButton(
                 text: "Masuk",
                 onPressed: () async {
@@ -105,8 +107,7 @@ class _LoginPageState extends State<LoginPage> {
 
                   if (emailText.isEmpty || passText.isEmpty) {
                     setState(() {
-                      errorMessage =
-                      "Email dan password tidak boleh kosong.";
+                      errorMessage = "Email dan password tidak boleh kosong.";
                     });
                     return;
                   }
@@ -114,7 +115,6 @@ class _LoginPageState extends State<LoginPage> {
                   final hashed = hashPassword(passText);
 
                   try {
-                    // Ambil user berdasarkan email
                     final response = await Supabase.instance.client
                         .from('Users')
                         .select()
@@ -122,34 +122,34 @@ class _LoginPageState extends State<LoginPage> {
                         .maybeSingle();
 
                     if (response == null) {
-                      setState(() {
-                        errorMessage = "Email tidak ditemukan.";
-                      });
+                      setState(() => errorMessage = "Email tidak ditemukan.");
                       return;
                     }
 
-                    // Cocokkan password hash
+                    // ============= CEK ROLE ===============
+                    if (response['Role'] != widget.role) {
+                      setState(() {
+                        errorMessage =
+                        "Akun ini bukan untuk login sebagai '${widget.role}'.";
+                      });
+                      return;
+                    }
+                    // ======================================
+
+                    // Cek password
                     if (response['Password'] != hashed) {
-                      setState(() {
-                        errorMessage = "Password salah.";
-                      });
+                      setState(() => errorMessage = "Password salah.");
                       return;
                     }
 
-                    // Login berhasil
-                    setState(() {
-                      errorMessage = "";
-                    });
+                    setState(() => errorMessage = "");
 
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Berhasil masuk"),
-                      ),
+                      const SnackBar(content: Text("Berhasil masuk")),
                     );
 
-                    // TODO: arahkan ke halaman utama
                     Navigator.pushReplacement(context,
-                        MaterialPageRoute(builder: (_) => HomePage()));
+                        MaterialPageRoute(builder: (_) => const HomePage()));
 
                   } catch (e) {
                     setState(() {
@@ -170,8 +170,7 @@ class _LoginPageState extends State<LoginPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                          const SignUpPage(role: "user"),
+                          builder: (context) => SignUpPage(role: widget.role),
                         ),
                       );
                     },
