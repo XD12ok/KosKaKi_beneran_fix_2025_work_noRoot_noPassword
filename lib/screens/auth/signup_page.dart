@@ -3,15 +3,24 @@ import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
 import 'signin_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 class SignUpPage extends StatelessWidget {
   final String role;
 
   const SignUpPage({super.key, required this.role});
 
+  // Fungsi hash password (SHA-256)
+  String hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // === CONTROLLER DIBUAT DI SINI ===
     final username = TextEditingController();
     final email = TextEditingController();
     final pass = TextEditingController();
@@ -101,13 +110,49 @@ class SignUpPage extends StatelessWidget {
                       return;
                     }
 
-                    // lanjut proses signup...
+                    if (passText.length < 8) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text("Password minimal 8 karakter")),
+                      );
+                      return;
+                    }
+
+                    try {
+                      // Hash password
+                      final hashedPassword = hashPassword(passText);
+
+                      // Insert ke Supabase
+                      await Supabase.instance.client.from('Users').insert({
+                        'UserName': usernameText,
+                        'Email': emailText,
+                        'Password': hashedPassword,
+                        'Role': role,
+                        'Created_at': DateTime.now().toIso8601String(),
+                      });
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                            content: Text("Akun berhasil dibuat")),
+                      );
+
+                      // Redirect ke LoginPage
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => LoginPage(role: role),
+                        ),
+                      );
+                    } catch (e) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Gagal mendaftar: $e")),
+                      );
+                    }
                   },
                 ),
 
                 const SizedBox(height: 40),
 
-                // Sudah punya akun
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -117,13 +162,12 @@ class SignUpPage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const LoginPage(),
+                            builder: (_) => LoginPage(role: role),
                           ),
                         );
                       },
                       child: const Padding(
-                        padding:
-                        EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                        padding: EdgeInsets.symmetric(vertical: 4, horizontal: 4),
                         child: Text(
                           "Masuk",
                           style: TextStyle(

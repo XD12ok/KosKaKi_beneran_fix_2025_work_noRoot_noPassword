@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:koskaki/screens/HomePage.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
 import 'signup_page.dart';
-import 'package:koskaki/screens/HomePage.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final String role;
+
+  const LoginPage({
+    super.key,
+    required this.role,
+  });
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -15,8 +23,13 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final email = TextEditingController();
   final pass = TextEditingController();
-
   String errorMessage = "";
+
+  // Hash password
+  String hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    return sha256.convert(bytes).toString();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +64,7 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 16),
 
-              // Password menggunakan KKTextField
+              // Password
               KKTextField(
                 label: "Password",
                 controller: pass,
@@ -74,7 +87,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 22),
 
-              // Error kecil di tengah
               if (errorMessage.isNotEmpty)
                 Center(
                   child: Padding(
@@ -90,26 +102,63 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
 
-              // Tombol Masuk
               KKButton(
                 text: "Masuk",
-                onPressed: () {
-                  setState(() {
-                    if (email.text.isEmpty || pass.text.isEmpty) {
+                onPressed: () async {
+                  final emailText = email.text.trim();
+                  final passText = pass.text.trim();
+
+                  if (emailText.isEmpty || passText.isEmpty) {
+                    setState(() {
                       errorMessage = "Email dan password tidak boleh kosong.";
+                    });
+                    return;
+                  }
+
+                  final hashed = hashPassword(passText);
+
+                  try {
+                    final response = await Supabase.instance.client
+                        .from('Users')
+                        .select()
+                        .eq('Email', emailText)
+                        .maybeSingle();
+
+                    if (response == null) {
+                      setState(() => errorMessage = "Email tidak ditemukan.");
                       return;
                     }
 
-                    errorMessage = "";
-                  });
+                    // ============= CEK ROLE ===============
+                    if (response['Role'] != widget.role) {
+                      setState(() {
+                        errorMessage =
+                        "Akun ini bukan untuk login sebagai '${widget.role}'.";
+                      });
+                      return;
+                    }
+                    // ======================================
 
-                  // Jika lolos validasi langsung pindah ke HomePage
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const HomePage(),
-                    ),
-                  );
+                    // Cek password
+                    if (response['Password'] != hashed) {
+                      setState(() => errorMessage = "Password salah.");
+                      return;
+                    }
+
+                    setState(() => errorMessage = "");
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Berhasil masuk")),
+                    );
+
+                    Navigator.pushReplacement(context,
+                        MaterialPageRoute(builder: (_) => const HomePage()));
+
+                  } catch (e) {
+                    setState(() {
+                      errorMessage = "Terjadi kesalahan: $e";
+                    });
+                  }
                 },
               ),
 
@@ -124,8 +173,7 @@ class _LoginPageState extends State<LoginPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                          const SignUpPage(role: "user"),
+                          builder: (context) => SignUpPage(role: widget.role),
                         ),
                       );
                     },
@@ -140,7 +188,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ],
               ),
-
             ],
           ),
         ),
