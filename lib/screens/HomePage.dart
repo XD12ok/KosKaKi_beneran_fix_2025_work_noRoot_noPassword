@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'QrScan.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -26,8 +27,24 @@ class HomePage extends StatelessWidget {
                       width: 55,
                       height: 55,
                       fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 55,
+                          height: 55,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(50),
+                          ),
+                          child: const Icon(
+                            Icons.person,
+                            size: 32,
+                            color: Colors.white,
+                          ),
+                        );
+                      },
                     ),
                   ),
+
 
                   const SizedBox(width: 12),
 
@@ -54,10 +71,27 @@ class HomePage extends StatelessWidget {
 
                   const Spacer(),
 
-                  // Icon Kanan Duwur (Pajangan Tok nggo saiki)
-                  Icon(Icons.favorite_border, size: 26),
-                  const SizedBox(width: 14),
-                  Icon(Icons.notifications_none, size: 26),
+                  // Icon Kanan Atas + Scan QR
+                  Row(
+                    children: [
+                      Icon(Icons.favorite_border, size: 26),
+                      const SizedBox(width: 14),
+                      Icon(Icons.notifications_none, size: 26),
+                      const SizedBox(width: 14),
+
+                      // Tombol Scan QR
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const QrScanPage()),
+                          );
+                        },
+                        child: const Icon(Icons.qr_code_scanner, size: 28),
+                      ),
+                    ],
+                  ),
+
                 ],
               ),
 

@@ -3,6 +3,7 @@ import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
 import 'signup_page.dart';
+import 'package:koskaki/screens/HomePage.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -101,6 +102,14 @@ class _LoginPageState extends State<LoginPage> {
 
                     errorMessage = "";
                   });
+
+                  // Jika lolos validasi langsung pindah ke HomePage
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HomePage(),
+                    ),
+                  );
                 },
               ),
 
