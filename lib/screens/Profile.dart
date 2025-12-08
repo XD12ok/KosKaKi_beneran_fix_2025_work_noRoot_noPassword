@@ -1,10 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:koskaki/service/upload_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-
+final supabase = Supabase.instance.client;
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -15,20 +14,147 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   File? profileImage;
-  final ImagePicker picker = ImagePicker();
+  final picker = ImagePicker();
 
-  Future<void> pickImage() async {
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _phone = TextEditingController();
 
-    if (image != null) {
-      setState(() {
-        profileImage = File(image.path);
-      });
-    }
-  }
+  bool loading = false;
+  Map<String, dynamic>? userRow;
+  Map<String, dynamic>? avatarRow;
 
   @override
+  void initState() {
+    super.initState();
+    loadUserData();
+  }
+
+  // Load Profile
+  Future<void> loadUserData() async {
+    final auth = supabase.auth.currentUser;
+
+    if (auth == null) {
+      print("ERROR: auth user null");
+      return;
+    }
+
+    final email = auth.email;
+
+    final user = await supabase
+        .from("Users")
+        .select()
+        .eq("Email", email as Object)
+        .maybeSingle();
+
+    if (user == null) {
+      print("ERROR: User row not found in table Users");
+      setState(() {
+        userRow = {'id': -1};
+      });
+      return;
+    }
+
+    final avatar = await supabase
+        .from("useravatars")
+        .select()
+        .eq("user_id", user['id'])
+        .maybeSingle();
+
+    setState(() {
+      userRow = user;
+      avatarRow = avatar;
+
+      _name.text = user["UserName"] ?? "";
+      _email.text = user["Email"] ?? "";
+      _password.text = user["Password"] ?? "";
+      _phone.text = user["PhoneNumber"]?.toString() ?? "";
+    });
+  }
+
+  // ===============================================================
+  //                  PICK & UPLOAD AVATAR
+  // ===============================================================
+  Future<String?> uploadAvatar() async {
+    if (profileImage == null) return avatarRow?['avatar_url'];
+
+    final user = supabase.auth.currentUser;
+    if (user == null || userRow == null) return null;
+
+    final fileName = "avatar_${user.id}.jpg";
+
+    await supabase.storage.from("avatars").upload(
+      fileName,
+      profileImage!,
+      fileOptions: const FileOptions(upsert: true),
+    );
+
+    final url = supabase.storage.from("avatars").getPublicUrl(fileName);
+
+    await supabase.from("useravatars").upsert({
+      "user_id": userRow!["id"], // integer dari database
+      "avatar_url": url,
+    });
+
+    return url;
+  }
+
+  // Upd Profile
+  Future<void> updateProfile() async {
+    if (userRow == null) return;
+
+    setState(() => loading = true);
+
+    try {
+      final avatarUrl = await uploadAvatar();
+
+      await supabase.from("Users").update({
+        "UserName": _name.text,
+        "Email": _email.text,
+        "Password": _password.text,
+        "PhoneNumber": int.tryParse(_phone.text),
+      }).eq("id", userRow!["id"]);
+
+      // Upd auth email/password
+      await supabase.auth.updateUser(
+        UserAttributes(
+          email: _email.text,
+          password: _password.text,
+        ),
+      );
+
+      // Upd state avatar
+      if (avatarUrl != null) {
+        setState(() {
+          avatarRow = {"avatar_url": avatarUrl};
+        });
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Profil berhasil diperbarui")),
+      );
+    } catch (e) {
+      print("UPDATE ERROR: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Gagal memperbarui profil: $e")),
+      );
+    }
+
+    setState(() => loading = false);
+  }
+
+  // Ui
+  @override
   Widget build(BuildContext context) {
+    if (userRow == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final avatarUrl = avatarRow?["avatar_url"];
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -38,9 +164,17 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               const SizedBox(height: 20),
 
-              // FOTO PROFIL + GANTI FOTO
               GestureDetector(
-                onTap: pickImage,
+                onTap: () async {
+                  final XFile? image =
+                  await picker.pickImage(source: ImageSource.gallery);
+
+                  if (image != null) {
+                    setState(() {
+                      profileImage = File(image.path);
+                    });
+                  }
+                },
                 child: Stack(
                   alignment: Alignment.bottomRight,
                   children: [
@@ -48,17 +182,20 @@ class _ProfilePageState extends State<ProfilePage> {
                       radius: 70,
                       backgroundImage: profileImage != null
                           ? FileImage(profileImage!)
+                          : (avatarUrl != null
+                          ? NetworkImage(avatarUrl)
                           : const NetworkImage(
-                        "https://i.pinimg.com/564x/4d/13/e9/4d13e9d97e57493e7cde4cd2e5f05a2f.jpg",
-                      ) as ImageProvider,
+                          "https://i.pinimg.com/564x/4d/13/e9/4d13e9d97e57493e7cde4cd2e5f05a2f.jpg"))
+                      as ImageProvider,
                     ),
                     Container(
                       padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.blue,
                       ),
-                      child: const Icon(Icons.edit, color: Colors.white, size: 20),
+                      child:
+                      const Icon(Icons.edit, color: Colors.white, size: 20),
                     ),
                   ],
                 ),
@@ -66,57 +203,26 @@ class _ProfilePageState extends State<ProfilePage> {
 
               const SizedBox(height: 25),
 
-              // FORM DATA LAINNYA
               buildLabel("Nama"),
-              buildInput(controller: TextEditingController(text: "Wedus Gak Mandi")),
+              buildInput(controller: _name),
 
               buildLabel("Email"),
-              buildInput(controller: TextEditingController(text: "wedus.cyanitks@gmail.com")),
+              buildInput(controller: _email),
 
               buildLabel("Password"),
-              buildInput(controller: TextEditingController(text: "********")),
+              buildInput(controller: _password),
 
               buildLabel("Nomor Telepon"),
-              buildInput(controller: TextEditingController(text: "+62 098 1290 990")),
+              buildInput(controller: _phone),
 
               const SizedBox(height: 30),
 
               ElevatedButton(
-                onPressed: () async {
-                  // 1. Pastikan user sudah pilih gambar
-                  if (profileImage != null) {
-
-                    final userId = supabase.auth.currentUser!.id;
-
-                    // 2. Upload gambar ke Supabase Storage
-                    final avatarUrl = await uploadAvatar(profileImage!, userId);
-
-                    // 3. Jika berhasil, simpan URL avatar ke tabel "profiles"
-                    if (avatarUrl != null) {
-                      await supabase.from('profiles').update({
-                        'avatar_url': avatarUrl,
-                      }).eq('id', userId);
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Foto profil berhasil diperbarui!")),
-                      );
-                    }
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Pilih foto dulu")),
-                    );
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF20208A),
-                  minimumSize: const Size(double.infinity, 55),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text("Perbarui", style: TextStyle(fontSize: 18)),
-              )
-
+                onPressed: loading ? null : updateProfile,
+                child: loading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text("Simpan Perubahan"),
+              ),
             ],
           ),
         ),
@@ -124,7 +230,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Reusable widget untuk label
   Widget buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6, top: 15),
@@ -138,7 +243,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // Reusable widget untuk input
   Widget buildInput({required TextEditingController controller}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),

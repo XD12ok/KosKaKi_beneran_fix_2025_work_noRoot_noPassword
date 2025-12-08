@@ -9,7 +9,9 @@
     <application
         android:label="koskaki"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:hardwareAccelerated="false">
+
 
         <activity
             android:name=".MainActivity"

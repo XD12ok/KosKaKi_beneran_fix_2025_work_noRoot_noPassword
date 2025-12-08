@@ -3,18 +3,17 @@ import 'package:koskaki/screens/HomePage.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
+import '../../service/auth_service.dart';
 import 'signup_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
+
 class LoginPage extends StatefulWidget {
   final String role;
 
-  const LoginPage({
-    super.key,
-    required this.role,
-  });
+  const LoginPage({super.key, required this.role});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -25,10 +24,8 @@ class _LoginPageState extends State<LoginPage> {
   final pass = TextEditingController();
   String errorMessage = "";
 
-  // Hash password
   String hashPassword(String password) {
-    final bytes = utf8.encode(password);
-    return sha256.convert(bytes).toString();
+    return sha256.convert(utf8.encode(password)).toString();
   }
 
   @override
@@ -41,21 +38,15 @@ class _LoginPageState extends State<LoginPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               const KKLogo(),
               const SizedBox(height: 20),
 
               const Text(
                 "Masuk",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
-
               const SizedBox(height: 20),
 
-              // Email
               KKTextField(
                 label: "Email",
                 controller: email,
@@ -64,7 +55,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 16),
 
-              // Password
               KKTextField(
                 label: "Password",
                 controller: pass,
@@ -72,35 +62,18 @@ class _LoginPageState extends State<LoginPage> {
                 obscure: true,
               ),
 
-              const SizedBox(height: 10),
-
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  "Lupa Password?",
-                  style: TextStyle(
-                    color: Colors.grey[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-
               const SizedBox(height: 22),
 
               if (errorMessage.isNotEmpty)
                 Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      errorMessage,
+                  child: Text(errorMessage,
                       style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
                 ),
+
+              const SizedBox(height: 10),
 
               KKButton(
                 text: "Masuk",
@@ -109,9 +82,7 @@ class _LoginPageState extends State<LoginPage> {
                   final passText = pass.text.trim();
 
                   if (emailText.isEmpty || passText.isEmpty) {
-                    setState(() {
-                      errorMessage = "Email dan password tidak boleh kosong.";
-                    });
+                    setState(() => errorMessage = "Email dan password wajib.");
                     return;
                   }
 
@@ -119,9 +90,9 @@ class _LoginPageState extends State<LoginPage> {
 
                   try {
                     final response = await Supabase.instance.client
-                        .from('Users')
+                        .from("Users")
                         .select()
-                        .eq('Email', emailText)
+                        .eq("Email", emailText)
                         .maybeSingle();
 
                     if (response == null) {
@@ -129,40 +100,35 @@ class _LoginPageState extends State<LoginPage> {
                       return;
                     }
 
-                    // ============= CEK ROLE ===============
-                    if (response['Role'] != widget.role) {
-                      setState(() {
-                        errorMessage =
-                        "Akun ini bukan untuk login sebagai '${widget.role}'.";
-                      });
+                    final role = response['Role'] as String;
+                    final dbPassword = response['Password'] as String;
+
+                    if (role != widget.role) {
+                      setState(() => errorMessage =
+                      "Akun ini tidak bisa login sebagai ${widget.role}");
                       return;
                     }
-                    // ======================================
 
-                    // Cek password
-                    if (response['Password'] != hashed) {
+                    if (dbPassword != hashed) {
                       setState(() => errorMessage = "Password salah.");
                       return;
                     }
 
-                    setState(() => errorMessage = "");
+                    // Simpan session
+                    await AuthService.saveUserSession(response['id'] as int);
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Berhasil masuk")),
+                    // Pindah ke HomePage
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HomePage()),
                     );
-
-                    Navigator.pushReplacement(context,
-                        MaterialPageRoute(builder: (_) => const HomePage()));
-
                   } catch (e) {
-                    setState(() {
-                      errorMessage = "Terjadi kesalahan: $e";
-                    });
+                    setState(() => errorMessage = "Error: $e");
                   }
                 },
               ),
 
-              const SizedBox(height: 50),
+              const SizedBox(height: 40),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -173,17 +139,16 @@ class _LoginPageState extends State<LoginPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => SignUpPage(role: widget.role),
+                          builder: (_) => SignUpPage(role: widget.role),
                         ),
                       );
                     },
                     child: const Text(
                       "Daftar",
                       style: TextStyle(
-                        color: Colors.blue,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+                          color: Colors.blue,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15),
                     ),
                   ),
                 ],
