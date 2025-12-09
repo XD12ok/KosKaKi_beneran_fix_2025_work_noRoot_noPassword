@@ -181,7 +181,7 @@ class _HomePageState extends State<HomePage> {
               },
               child: const Icon(Icons.qr_code_scanner, size: 28),
             ),
-          ],
+          ],  
         ),
       ],
     );

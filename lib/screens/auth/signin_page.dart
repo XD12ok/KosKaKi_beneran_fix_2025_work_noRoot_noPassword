@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:koskaki/screens/HomePage.dart';
+import 'package:koskaki/screens/OwnerPage.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
@@ -118,10 +119,19 @@ class _LoginPageState extends State<LoginPage> {
                     await AuthService.saveUserSession(response['id'] as int);
 
                     // Pindah ke HomePage
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const HomePage()),
-                    );
+                    // Pindah ke HomePage sesuai role
+                    if (widget.role == "Penghunir") {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomePage()),
+                      );
+                    }
+                    else {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OwnerHomePage()),
+                      );
+                    }
                   } catch (e) {
                     setState(() => errorMessage = "Error: $e");
                   }
