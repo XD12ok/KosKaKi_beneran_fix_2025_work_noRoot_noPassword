@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:koskaki/screens/HomePage.dart';
+import 'package:koskaki/screens/OwnerPage.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
+import '../../service/auth_service.dart';
 import 'signup_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final String role;
+
+  const LoginPage({super.key, required this.role});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -14,8 +23,11 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final email = TextEditingController();
   final pass = TextEditingController();
-
   String errorMessage = "";
+
+  String hashPassword(String password) {
+    return sha256.convert(utf8.encode(password)).toString();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,21 +39,15 @@ class _LoginPageState extends State<LoginPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               const KKLogo(),
               const SizedBox(height: 20),
 
               const Text(
                 "Masuk",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
               ),
-
               const SizedBox(height: 20),
 
-              // Email
               KKTextField(
                 label: "Email",
                 controller: email,
@@ -50,7 +56,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 16),
 
-              // Password menggunakan KKTextField
               KKTextField(
                 label: "Password",
                 controller: pass,
@@ -58,53 +63,82 @@ class _LoginPageState extends State<LoginPage> {
                 obscure: true,
               ),
 
-              const SizedBox(height: 10),
-
-              Align(
-                alignment: Alignment.centerRight,
-                child: Text(
-                  "Lupa Password?",
-                  style: TextStyle(
-                    color: Colors.grey[700],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-
               const SizedBox(height: 22),
 
-              // Error kecil di tengah
               if (errorMessage.isNotEmpty)
                 Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(
-                      errorMessage,
+                  child: Text(errorMessage,
                       style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13)),
                 ),
 
-              // Tombol Masuk
+              const SizedBox(height: 10),
+
               KKButton(
                 text: "Masuk",
-                onPressed: () {
-                  setState(() {
-                    if (email.text.isEmpty || pass.text.isEmpty) {
-                      errorMessage = "Email dan password tidak boleh kosong.";
+                onPressed: () async {
+                  final emailText = email.text.trim();
+                  final passText = pass.text.trim();
+
+                  if (emailText.isEmpty || passText.isEmpty) {
+                    setState(() => errorMessage = "Email dan password wajib.");
+                    return;
+                  }
+
+                  final hashed = hashPassword(passText);
+
+                  try {
+                    final response = await Supabase.instance.client
+                        .from("Users")
+                        .select()
+                        .eq("Email", emailText)
+                        .maybeSingle();
+
+                    if (response == null) {
+                      setState(() => errorMessage = "Email tidak ditemukan.");
                       return;
                     }
 
-                    errorMessage = "";
-                  });
+                    final role = response['Role'] as String;
+                    final dbPassword = response['Password'] as String;
+
+                    if (role != widget.role) {
+                      setState(() => errorMessage =
+                      "Akun ini tidak bisa login sebagai ${widget.role}");
+                      return;
+                    }
+
+                    if (dbPassword != hashed) {
+                      setState(() => errorMessage = "Password salah.");
+                      return;
+                    }
+
+                    // Simpan session
+                    await AuthService.saveUserSession(response['id'] as int);
+
+                    // Pindah ke HomePage
+                    // Pindah ke HomePage sesuai role
+                    if (widget.role == "Penghunir") {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HomePage()),
+                      );
+                    }
+                    else {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OwnerHomePage()),
+                      );
+                    }
+                  } catch (e) {
+                    setState(() => errorMessage = "Error: $e");
+                  }
                 },
               ),
 
-              const SizedBox(height: 50),
+              const SizedBox(height: 40),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -115,23 +149,20 @@ class _LoginPageState extends State<LoginPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) =>
-                          const SignUpPage(role: "user"),
+                          builder: (_) => SignUpPage(role: widget.role),
                         ),
                       );
                     },
                     child: const Text(
                       "Daftar",
                       style: TextStyle(
-                        color: Colors.blue,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+                          color: Colors.blue,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15),
                     ),
                   ),
                 ],
               ),
-
             ],
           ),
         ),
