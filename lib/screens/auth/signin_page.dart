@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:koskaki/screens/HomePage.dart';
-import 'package:koskaki/screens/OwnerPage.dart';
+import 'package:koskaki/screens/Resident/HomePage.dart';
+import 'package:koskaki/screens/Owner/OwnerPage.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
@@ -120,7 +120,7 @@ class _LoginPageState extends State<LoginPage> {
 
                     // Pindah ke HomePage
                     // Pindah ke HomePage sesuai role
-                    if (widget.role == "Penghunir") {
+                    if (widget.role == "Penghuni") {
                       Navigator.pushReplacement(
                         context,
                         MaterialPageRoute(builder: (_) => const HomePage()),

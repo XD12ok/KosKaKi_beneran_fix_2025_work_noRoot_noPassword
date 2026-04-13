@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../service/auth_service.dart';
-import 'QrScan.dart';
-import 'Profile.dart';
+import 'package:koskaki/screens/QrScan.dart';
+import 'package:koskaki/screens/Profile.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -147,7 +147,7 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Hai, ${userData!['username']}",
+              "Hai, ${userData?['username'] ?? 'User'}",
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
