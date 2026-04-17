@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:koskaki/service/api_service.dart'; // ✅ pakai API
 import 'package:koskaki/screens/WelcomeScreen.dart';
-
-final supabase = Supabase.instance.client;
 
 class PengaturanOwnerPage extends StatelessWidget {
   final Map<String, dynamic>? userData;
@@ -14,22 +12,31 @@ class PengaturanOwnerPage extends StatelessWidget {
     this.loading = false,
   });
 
+  // ✅ LOGOUT FIX (PAKAI API)
   Future<void> _logout(BuildContext context) async {
     try {
-      await supabase.auth.signOut();
-      if (context.mounted) {
+      final api = ApiService();
+
+      final success = await api.logout();
+
+      if (!context.mounted) return;
+
+      if (success) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const WelcomeScreen()),
           (route) => false,
         );
-      }
-    } catch (e) {
-      print("ERROR LOGOUT: $e");
-      if (context.mounted) {
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Gagal logout. Coba lagi.")),
         );
       }
+    } catch (e) {
+      print("ERROR LOGOUT: $e");
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Terjadi kesalahan saat logout")),
+      );
     }
   }
 
@@ -40,7 +47,6 @@ class PengaturanOwnerPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Profile Section
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -95,12 +101,11 @@ class PengaturanOwnerPage extends StatelessWidget {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
-          // Menu Pengaturan
+
           _buildSettingsItem(
-            icon: Icons.person_outlined,
+            icon: Icons.person_outline,
             title: 'Edit Profil',
             subtitle: 'Ubah informasi profil Anda',
             onTap: () {},
@@ -118,7 +123,7 @@ class PengaturanOwnerPage extends StatelessWidget {
             onTap: () {},
           ),
           _buildSettingsItem(
-            icon: Icons.help_outlined,
+            icon: Icons.help_outline,
             title: 'Bantuan',
             subtitle: 'Pusat bantuan dan FAQ',
             onTap: () {},
@@ -129,10 +134,9 @@ class PengaturanOwnerPage extends StatelessWidget {
             subtitle: 'Versi 1.0.0',
             onTap: () {},
           ),
-          
+
           const SizedBox(height: 32),
-          
-          // Tombol Logout
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(

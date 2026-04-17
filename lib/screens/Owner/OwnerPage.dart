@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../service/auth_service.dart';
+import 'package:koskaki/service/api_service.dart';
 import 'package:koskaki/screens/Owner/KostPage.dart'; 
-import 'Laporan.dart';
+import 'package:koskaki/screens/Owner/Laporan.dart';
 import 'package:koskaki/screens/Owner/PengaturanOwner.dart';
-
-final supabase = Supabase.instance.client;
 
 class OwnerHomePage extends StatefulWidget {
   const OwnerHomePage({super.key});
@@ -25,26 +22,27 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
     loadUser();
   }
 
+  // ✅ AMBIL USER DARI API (FIX)
   Future<void> loadUser() async {
     try {
-      final userId = await AuthService.getUserSession();
-      if (userId == null) {
+      final api = ApiService();
+      final response = await api.getUser();
+
+      print("USER API: $response");
+
+      if (response == null) {
         setState(() => loading = false);
         return;
       }
 
-      final userRow = await supabase
-          .from('Users')
-          .select()
-          .eq('id', userId)
-          .maybeSingle();
-
       setState(() {
-        userData = {"username": userRow?['UserName'] ?? "Owner"};
+        userData = {
+          "username": response['name'] ?? "Owner"
+        };
         loading = false;
       });
     } catch (e) {
-      print("ERROR LOAD USER: $e");
+      print("ERROR LOAD USER API: $e");
       setState(() => loading = false);
     }
   }
@@ -78,7 +76,6 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
         ],
       ),
 
-      // ✅ ISI HALAMAN
       body: IndexedStack(
         index: currentIndex,
         children: [
@@ -86,7 +83,7 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
             userData: userData,
             loading: loading,
           ),
-          const KostPage(),
+          KostPage(),
           LaporanPage(),
           PengaturanOwnerPage(
             userData: userData,
@@ -95,14 +92,11 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
         ],
       ),
 
-      // ✅ NAVBAR
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentIndex,
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFF0A0E50),
         unselectedItemColor: Colors.grey,
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
         onTap: (index) {
           if (index == currentIndex) return;
           setState(() {
@@ -133,7 +127,7 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
 }
 
 //
-// ✅ HALAMAN BERANDA (SUDAH DI-MERGE)
+// ✅ BERANDA PAGE (TIDAK DIUBAH)
 //
 class BerandaPage extends StatelessWidget {
   final Map<String, dynamic>? userData;
@@ -242,7 +236,6 @@ class BerandaPage extends StatelessWidget {
     );
   }
 
-  // ✅ CARD MENU
   Widget _buildMenuCard({
     required IconData icon,
     required Color iconColor,

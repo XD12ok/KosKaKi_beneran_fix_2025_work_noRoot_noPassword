@@ -1,44 +1,9 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:koskaki/service/api_service.dart';
 import 'package:koskaki/screens/WelcomeScreen.dart';
 import 'package:koskaki/screens/Owner/OwnerPage.dart';
 import 'package:koskaki/screens/Resident/HomePage.dart';
-import 'package:koskaki/service/api_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'firebase_options.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  // Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Supabase (kalau masih dipakai)
-  await Supabase.initialize(
-    url: 'https://ggawtlojbtrlyxudenvw.supabase.co',
-    anonKey: 'YOUR_KEY',
-  );
-
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: CheckAuthPage(), // 🔥 AUTO LOGIN
-    );
-  }
-}
-
-// ========================================
-// 🔥 AUTO LOGIN CHECKER
-// ========================================
 class CheckAuthPage extends StatefulWidget {
   const CheckAuthPage({super.key});
 
@@ -57,23 +22,26 @@ class _CheckAuthPageState extends State<CheckAuthPage> {
   Future<void> checkLogin() async {
     final api = ApiService();
 
-    // ✅ CEK TOKEN
+    // 🔥 1. Ambil token
     final token = await api.getToken();
 
     if (token == null) {
+      // ❌ BELUM LOGIN
       _goToWelcome();
       return;
     }
 
-    // ✅ CEK USER
+    // 🔥 2. Ambil user dari API
     final user = await api.getUser();
 
     if (user == null) {
+      // ❌ TOKEN INVALID / EXPIRED
       await api.removeToken();
       _goToWelcome();
       return;
     }
 
+    // 🔥 3. Cek role
     final role = user['role'];
 
     if (role == "residents") {
@@ -110,7 +78,9 @@ class _CheckAuthPageState extends State<CheckAuthPage> {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
+      body: Center(
+        child: CircularProgressIndicator(),
+      ),
     );
   }
 }
