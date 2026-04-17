@@ -12,7 +12,6 @@ class PengaturanOwnerPage extends StatelessWidget {
     this.loading = false,
   });
 
-  // ✅ LOGOUT FIX (PAKAI API)
   Future<void> _logout(BuildContext context) async {
     try {
       final api = ApiService();

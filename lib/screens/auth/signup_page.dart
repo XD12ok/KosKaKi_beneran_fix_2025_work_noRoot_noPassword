@@ -31,7 +31,6 @@ class _SignUpPageState extends State<SignUpPage> {
     super.dispose();
   }
 
-  // 🔥 FUNCTION ALERT ERROR
   void showErrorDialog(String message) {
     showDialog(
       context: context,
@@ -115,7 +114,6 @@ class _SignUpPageState extends State<SignUpPage> {
                       final passText = pass.text.trim();
                       final confirmText = confirm.text.trim();
 
-                      // VALIDASI
                       if (usernameText.isEmpty ||
                           emailText.isEmpty ||
                           passText.isEmpty ||

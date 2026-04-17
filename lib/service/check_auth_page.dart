@@ -21,27 +21,22 @@ class _CheckAuthPageState extends State<CheckAuthPage> {
 
   Future<void> checkLogin() async {
     final api = ApiService();
-
-    // 🔥 1. Ambil token
+    
     final token = await api.getToken();
 
     if (token == null) {
-      // ❌ BELUM LOGIN
       _goToWelcome();
       return;
     }
 
-    // 🔥 2. Ambil user dari API
     final user = await api.getUser();
 
     if (user == null) {
-      // ❌ TOKEN INVALID / EXPIRED
       await api.removeToken();
       _goToWelcome();
       return;
     }
 
-    // 🔥 3. Cek role
     final role = user['role'];
 
     if (role == "residents") {

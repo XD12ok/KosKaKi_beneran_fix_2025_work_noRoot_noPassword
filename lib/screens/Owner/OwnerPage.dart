@@ -22,7 +22,6 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
     loadUser();
   }
 
-  // ✅ AMBIL USER DARI API (FIX)
   Future<void> loadUser() async {
     try {
       final api = ApiService();
@@ -126,9 +125,6 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   }
 }
 
-//
-// ✅ BERANDA PAGE (TIDAK DIUBAH)
-//
 class BerandaPage extends StatelessWidget {
   final Map<String, dynamic>? userData;
   final bool loading;

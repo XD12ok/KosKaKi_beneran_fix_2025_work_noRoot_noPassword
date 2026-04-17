@@ -9,7 +9,6 @@ class ProfilePage extends StatelessWidget {
     try {
       final api = ApiService();
 
-      // 🔥 HIT API LOGOUT + HAPUS TOKEN
       final success = await api.logout();
 
       if (!context.mounted) return;

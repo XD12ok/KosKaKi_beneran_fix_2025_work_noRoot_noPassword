@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:koskaki/service/api_service.dart';
-import '../QrScan.dart';
-import '../Profile.dart';
+import 'QrScan.dart';
+import 'Profile.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,7 +20,6 @@ class _HomePageState extends State<HomePage> {
     loadUser();
   }
 
-  // ✅ AMBIL USER DARI API (BUKAN SUPABASE)
   Future<void> loadUser() async {
     try {
       final api = ApiService();
@@ -48,7 +47,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // UI
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -89,7 +87,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ✅ HEADER (USERNAME DARI API)
   Widget buildProfileHeader(BuildContext context) {
     if (userData == null) {
       return Row(
@@ -166,7 +163,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // SEARCH
   Widget buildSearchBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 15),
