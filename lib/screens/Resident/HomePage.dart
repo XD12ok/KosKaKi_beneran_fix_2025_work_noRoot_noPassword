@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../service/auth_service.dart';
+import 'package:koskaki/service/api_service.dart';
 import 'QrScan.dart';
 import 'Profile.dart';
-
-final supabase = Supabase.instance.client;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -23,51 +20,33 @@ class _HomePageState extends State<HomePage> {
     loadUser();
   }
 
-  // Get User
   Future<void> loadUser() async {
     try {
-      final userId = await AuthService.getUserSession();
+      final api = ApiService();
 
-      print("DEBUG: userId session = $userId");
+      final user = await api.getUser();
 
-      if (userId == null) {
-        print("DEBUG: userId null, user belum login");
+      print("USER API: $user");
+
+      if (user == null) {
         setState(() => loading = false);
         return;
       }
 
-      final userRow = await supabase
-          .from('Users')
-          .select()
-          .eq('id', userId)
-          .maybeSingle();
-
-      print("DEBUG: userRow = $userRow");
-
-      final avatarRow = await supabase
-          .from('useravatars')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
-
-      print("DEBUG: avatarRow = $avatarRow");
-
       setState(() {
         userData = {
-          "username": userRow?['UserName'] ?? "User",
-          "email": userRow?['Email'],
-          "phone": userRow?['PhoneNumber'],
-          "avatar": avatarRow?['avatar_url'],
+          "username": user['name'] ?? "User",
+          "email": user['email'],
+          "avatar": null, // kalau API belum ada avatar
         };
         loading = false;
       });
     } catch (e) {
-      print("ERROR LOAD USER: $e");
+      print("ERROR LOAD USER API: $e");
       setState(() => loading = false);
     }
   }
 
-  // Ui
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -76,39 +55,37 @@ class _HomePageState extends State<HomePage> {
         child: loading
             ? const Center(child: CircularProgressIndicator())
             : SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              buildProfileHeader(context),
-              const SizedBox(height: 20),
-              buildSearchBar(),
-              const SizedBox(height: 20),
-              buildMenuCategory(),
-              const SizedBox(height: 25),
-              const Text(
-                "Riwayat Pemesanan",
-                style:
-                TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    buildProfileHeader(context),
+                    const SizedBox(height: 20),
+                    buildSearchBar(),
+                    const SizedBox(height: 20),
+                    buildMenuCategory(),
+                    const SizedBox(height: 25),
+                    const Text(
+                      "Riwayat Pemesanan",
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    _riwayatCard(),
+                    const SizedBox(height: 25),
+                    const Text(
+                      "Rekomendasi Terbaik",
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 10),
+                    _rekomendasiCard(),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
-              _riwayatCard(),
-              const SizedBox(height: 25),
-              const Text(
-                "Rekomendasi Terbaik",
-                style:
-                TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              _rekomendasiCard(),
-            ],
-          ),
-        ),
       ),
     );
   }
-
-  // Header
 
   Widget buildProfileHeader(BuildContext context) {
     if (userData == null) {
@@ -147,14 +124,14 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Hai, ${userData!['username']}",
+              "Hai, ${userData?['username'] ?? 'User'}",
               style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
             ),
             Text(
-              "${userData!['email']}",
+              "${userData?['email'] ?? '-'}",
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.grey[600],
@@ -171,7 +148,6 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(width: 14),
             const Icon(Icons.notifications_none, size: 26),
             const SizedBox(width: 14),
-
             GestureDetector(
               onTap: () {
                 Navigator.push(
@@ -181,13 +157,12 @@ class _HomePageState extends State<HomePage> {
               },
               child: const Icon(Icons.qr_code_scanner, size: 28),
             ),
-          ],  
+          ],
         ),
       ],
     );
   }
 
-  // Scrh bar
   Widget buildSearchBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -205,9 +180,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ======================================================
-  //                   MENU CATEGORY
-  // ======================================================
+  // MENU
   Widget buildMenuCategory() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -218,8 +191,6 @@ class _HomePageState extends State<HomePage> {
       ],
     );
   }
-
-  // Ui Komponen
 
   Widget _menuItem(IconData icon, String label) {
     return Column(
@@ -246,7 +217,6 @@ class _HomePageState extends State<HomePage> {
         border: Border.all(color: Colors.grey.shade300),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -259,27 +229,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(width: 12),
           const Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Biba’s kos mars",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  "14 Feb 2024 – 14 Okt 2024",
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-                SizedBox(height: 6),
-                Text(
-                  "Sangat Worth It. Saya suka saya suka dan senang tralalelo...",
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                )
-              ],
-            ),
+            child: Text("Contoh riwayat..."),
           )
         ],
       ),
@@ -293,43 +243,7 @@ class _HomePageState extends State<HomePage> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.grey.shade300),
       ),
-      child: Column(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(
-              "assets/kost2.jpg",
-              height: 160,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: const [
-              Text(
-                "Rahes Residence",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              Icon(Icons.more_vert),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Row(
-            children: [
-              Icon(Icons.location_on, size: 16, color: Colors.grey),
-              SizedBox(width: 4),
-              Text("Los Angles", style: TextStyle(color: Colors.grey)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            "Rp. 100.000.000 / bulan",
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
+      child: const Text("Contoh rekomendasi..."),
     );
   }
 }

@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:koskaki/screens/HomePage.dart';
-import 'package:koskaki/screens/OwnerPage.dart';
+import 'package:koskaki/screens/Resident/HomePage.dart';
+import 'package:koskaki/screens/Owner/OwnerPage.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
 import '../../service/auth_service.dart';
 import 'signup_page.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:convert';
-import 'package:crypto/crypto.dart';
-
+import 'package:koskaki/service/api_service.dart';
 
 class LoginPage extends StatefulWidget {
   final String role;
-
   const LoginPage({super.key, required this.role});
 
   @override
@@ -23,10 +19,29 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final email = TextEditingController();
   final pass = TextEditingController();
-  String errorMessage = "";
+  bool isLoading = false;
 
-  String hashPassword(String password) {
-    return sha256.convert(utf8.encode(password)).toString();
+  @override
+  void dispose() {
+    email.dispose();
+    pass.dispose();
+    super.dispose();
+  }
+
+  void showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Terjadi Kesalahan"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -65,78 +80,79 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 22),
 
-              if (errorMessage.isNotEmpty)
-                Center(
-                  child: Text(errorMessage,
-                      style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13)),
-                ),
-
               const SizedBox(height: 10),
 
-              KKButton(
-                text: "Masuk",
-                onPressed: () async {
-                  final emailText = email.text.trim();
-                  final passText = pass.text.trim();
+              isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : KKButton(
+                      text: "Masuk",
+                      onPressed: () async {
+                        final emailText = email.text.trim();
+                        final passText = pass.text.trim();
 
-                  if (emailText.isEmpty || passText.isEmpty) {
-                    setState(() => errorMessage = "Email dan password wajib.");
-                    return;
-                  }
+                        if (emailText.isEmpty || passText.isEmpty) {
+                          showErrorDialog("Email dan password wajib diisi.");
+                          return;
+                        }
 
-                  final hashed = hashPassword(passText);
+                        setState(() {
+                          isLoading = true;
+                        });
 
-                  try {
-                    final response = await Supabase.instance.client
-                        .from("Users")
-                        .select()
-                        .eq("Email", emailText)
-                        .maybeSingle();
+                        try {
+                          ApiService api = ApiService();
 
-                    if (response == null) {
-                      setState(() => errorMessage = "Email tidak ditemukan.");
-                      return;
-                    }
+                          // ✅ LOGIN
+                          final token =
+                              await api.login(emailText, passText);
 
-                    final role = response['Role'] as String;
-                    final dbPassword = response['Password'] as String;
+                          if (token == null) {
+                            setState(() => isLoading = false);
+                            showErrorDialog("Email atau password salah.");
+                            return;
+                          }
 
-                    if (role != widget.role) {
-                      setState(() => errorMessage =
-                      "Akun ini tidak bisa login sebagai ${widget.role}");
-                      return;
-                    }
+                          // ✅ AMBIL USER
+                          final user = await api.getUser();
 
-                    if (dbPassword != hashed) {
-                      setState(() => errorMessage = "Password salah.");
-                      return;
-                    }
+                          if (user == null) {
+                            setState(() => isLoading = false);
+                            showErrorDialog("Gagal mengambil data user.");
+                            return;
+                          }
 
-                    // Simpan session
-                    await AuthService.saveUserSession(response['id'] as int);
+                          final roleUser = user['role'];
 
-                    // Pindah ke HomePage
-                    // Pindah ke HomePage sesuai role
-                    if (widget.role == "Penghunir") {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => const HomePage()),
-                      );
-                    }
-                    else {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (_) => const OwnerHomePage()),
-                      );
-                    }
-                  } catch (e) {
-                    setState(() => errorMessage = "Error: $e");
-                  }
-                },
-              ),
+                          if (roleUser != widget.role) {
+                            setState(() => isLoading = false);
+                            showErrorDialog(
+                                "Akun ini tidak sesuai dengan role yang dipilih.");
+                            return;
+                          }
+
+                          // OPTIONAL
+                          await AuthService.saveUserSession(user['id']);
+
+                          // ✅ REDIRECT
+                          if (widget.role == "residents") {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const HomePage()),
+                            );
+                          } else {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const OwnerHomePage()),
+                            );
+                          }
+                        } catch (e) {
+                          setState(() => isLoading = false);
+                          showErrorDialog("Terjadi kesalahan jaringan.");
+                        }
+                      },
+                    ),
 
               const SizedBox(height: 40),
 
@@ -149,16 +165,18 @@ class _LoginPageState extends State<LoginPage> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => SignUpPage(role: widget.role),
+                          builder: (_) =>
+                              SignUpPage(role: widget.role),
                         ),
                       );
                     },
                     child: const Text(
                       "Daftar",
                       style: TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15),
+                        color: Colors.blue,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
                     ),
                   ),
                 ],

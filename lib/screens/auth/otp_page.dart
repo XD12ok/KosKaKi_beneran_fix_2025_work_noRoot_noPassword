@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:koskaki/screens/HomePage.dart';
+import 'package:koskaki/screens/Resident/HomePage.dart';
 import 'package:pinput/pinput.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/theme/app_theme.dart';
