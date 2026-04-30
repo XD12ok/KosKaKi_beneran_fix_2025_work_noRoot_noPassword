@@ -23,6 +23,8 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -32,6 +34,8 @@ class MyApp extends StatelessWidget {
 }
 
 class Decider extends StatefulWidget {
+  const Decider({super.key});
+
   @override
   _DeciderState createState() => _DeciderState();
 }
