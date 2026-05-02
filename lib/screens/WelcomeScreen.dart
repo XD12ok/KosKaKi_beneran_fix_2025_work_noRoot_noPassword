@@ -121,44 +121,6 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
 
-          /* if (showRoles)
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 700),
-              curve: Curves.easeOutBack,
-              bottom: 50,sad
-              left: 30,
-              right: 30,
-              child: Column(
-                children: [
-                  _roleButton(
-                    "Masuk sebagai pemilik",
-                    Icons.home,
-                        () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const OwnerHomePage(), // langsung ke halaman pemilik
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 30),
-                  _roleButton(
-                    "Masuk sebagai penghuni",
-                    Icons.people,
-                        () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const HomePage(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ), */
-
           /// Tombol Pemilik & Anak Kos
           if (showRoles)
             AnimatedPositioned(

@@ -36,11 +36,8 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// ========================================
-// 🔥 AUTO LOGIN CHECKER
-// ========================================
-class CheckAuthPage extends StatefulWidget {
-  const CheckAuthPage({super.key});
+class Decider extends StatefulWidget {
+  const Decider({super.key});
 
   @override
   State<CheckAuthPage> createState() => _CheckAuthPageState();
