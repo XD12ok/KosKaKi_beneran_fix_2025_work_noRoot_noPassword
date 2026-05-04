@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../data/dummy_kos.dart';
-import '../models/kos_model.dart';
-import '../data/RatingKos.dart'; 
-import 'DetailKos_page.dart';
+import 'package:koskaki/data/dummy_kos.dart';
+import 'package:koskaki/models/kos_model.dart';
+import 'package:koskaki/data/RatingKos.dart';
+import 'package:koskaki/screens/Resident/DetailKos_page.dart';
 
 const primaryColor = Color(0xFF2D2F8F);
 

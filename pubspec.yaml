@@ -41,10 +41,9 @@ dependencies:
   firebase_core: ^4.2.1
   supabase_flutter: ^2.0.0
   http: ^1.6.0
+  intl: ^0.18.1
   flutter:
     sdk: flutter
-
-  intl: ^0.18.1
 
 
 

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../data/RatingKos.dart';
+import 'package:koskaki/data/RatingKos.dart';
 
 const primaryColor = Color(0xFF2D2F8F);
 

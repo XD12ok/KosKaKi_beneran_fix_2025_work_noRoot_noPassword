@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../models/kos_model.dart';
+import 'package:koskaki/models/kos_model.dart';
 
 const primaryColor = Color(0xFF2D2F8F);
 

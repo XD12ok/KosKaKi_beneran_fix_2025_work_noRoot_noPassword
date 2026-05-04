@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
-import '../data/dummy_kos.dart';
-import '../models/kos_model.dart';
-import '../data/RatingKos.dart';
-import 'DetailKos_page.dart';
+import 'package:koskaki/data/dummy_kos.dart';
+import 'package:koskaki/models/kos_model.dart';
+import 'package:koskaki/data/RatingKos.dart';
+import 'package:koskaki/screens/Resident/DetailKos_page.dart';
 
 const primaryColor = Color(0xFF2D2F8F);
 
-class KosTerbaruPage extends StatelessWidget {
-  const KosTerbaruPage({super.key});
+class KosTerlengkapPage extends StatelessWidget {
+  const KosTerlengkapPage({super.key});
 
   @override
   Widget build(BuildContext context) {
 
-    List<KosModel> terbaru = List.from(dummyKos.reversed);
+    List<KosModel> lengkap = List.from(dummyKos);
+    lengkap.sort((a, b) => b.facilities.length.compareTo(a.facilities.length));
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -32,7 +33,7 @@ class KosTerbaruPage extends StatelessWidget {
                   const Expanded(
                     child: Center(
                       child: Text(
-                        "Kos Terbaru",
+                        "Kos Terlengkap",
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -46,11 +47,12 @@ class KosTerbaruPage extends StatelessWidget {
               ),
             ),
 
+            /// LIST
             Expanded(
               child: ListView.builder(
-                itemCount: terbaru.length,
+                itemCount: lengkap.length,
                 itemBuilder: (context, index) {
-                  final kos = terbaru[index];
+                  final kos = lengkap[index];
 
                   double rating = RatingKos.getAverage(kos.name);
                   int total = RatingKos.getTotal(kos.name);

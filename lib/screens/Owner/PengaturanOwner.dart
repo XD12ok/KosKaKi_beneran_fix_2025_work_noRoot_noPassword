@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:koskaki/service/api_service.dart'; // ✅ pakai API
 import 'package:koskaki/screens/WelcomeScreen.dart';
+import 'package:koskaki/screens/Owner/Lupa_password.dart';
 
 class PengaturanOwnerPage extends StatelessWidget {
   final Map<String, dynamic>? userData;
@@ -113,7 +114,21 @@ class PengaturanOwnerPage extends StatelessWidget {
             icon: Icons.lock_outline,
             title: 'Ubah Password',
             subtitle: 'Keamanan akun Anda',
-            onTap: () {},
+            onTap: () {
+              Navigator.push(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (_, __, ___) =>  LupaPasswordPage(),
+                  transitionsBuilder: (_, animation, __, child) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    );
+                  },
+                  transitionDuration: const Duration(milliseconds: 300),
+                ),
+              );
+            },
           ),
           _buildSettingsItem(
             icon: Icons.notifications_outlined,

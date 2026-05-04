@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../models/kos_model.dart';
-import '../data/RatingKos.dart'; 
-import 'PesanKos_page.dart';
+import 'package:koskaki/models/kos_model.dart';
+import 'package:koskaki/data/RatingKos.dart'; 
+import 'package:koskaki/screens/Resident/PesanKos_page.dart';
 
 class DetailKosPage extends StatefulWidget {
   final KosModel kos;

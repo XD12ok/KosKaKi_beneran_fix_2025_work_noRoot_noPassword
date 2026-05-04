@@ -1,4 +1,4 @@
-import '../models/kos_model.dart';
+import 'package:koskaki/models/kos_model.dart';
 
 List<KosModel> dummyKos = [
   // 1. Rahes Residence

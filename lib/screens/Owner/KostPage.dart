@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:koskaki/screens/Owner/Add_kost.dart';
 
 class KostPage extends StatelessWidget {
-  const KostPage({super.key}); // Tambahkan const di sini
+  const KostPage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -115,8 +116,11 @@ class KostPage extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Fitur tambah kos segera hadir')),
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AddKostPage(),
+            ),
           );
         },
         backgroundColor: const Color(0xFF0A0E50),
