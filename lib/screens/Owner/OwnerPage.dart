@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:curved_navigation_bar/curved_navigation_bar.dart'; // Import package baru
 import 'package:koskaki/service/api_service.dart';
 import 'package:koskaki/screens/Owner/KostPage.dart'; 
 import 'package:koskaki/screens/Owner/Laporan.dart';
@@ -15,6 +16,10 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   Map<String, dynamic>? userData;
   bool loading = true;
   int currentIndex = 0;
+
+  // Warna custom menyesuaikan gambar
+  final Color _barColor = const Color(0xFFEAF5EB); // Hijau sangat muda (background bar)
+  final Color _activeColor = const Color(0xFF0A0E50); // Hijau tua (lingkaran aktif)
 
   @override
   void initState() {
@@ -49,6 +54,8 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // Tambahkan warna background Scaffold agar animasi transisi kurva terlihat mulus
+      backgroundColor: const Color.fromARGB(255, 255, 255, 255), 
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -60,7 +67,7 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
           style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: Colors.black,
+            color: Color.fromARGB(255, 0, 0, 0),
           ),
         ),
         actions: [
@@ -82,8 +89,8 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
             userData: userData,
             loading: loading,
           ),
-          KostPage(),
-          LaporanPage(),
+          KostPage(), 
+          LaporanPage(), 
           PengaturanOwnerPage(
             userData: userData,
             loading: loading,
@@ -91,33 +98,39 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
         ],
       ),
 
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF0A0E50),
-        unselectedItemColor: Colors.grey,
+      bottomNavigationBar: CurvedNavigationBar(
+        index: currentIndex,
+        height: 65.0,
+        color: _barColor,
+        buttonBackgroundColor: _activeColor,
+        backgroundColor: Colors.white, 
+        animationCurve: Curves.easeInOut,
+        animationDuration: const Duration(milliseconds: 300),
         onTap: (index) {
-          if (index == currentIndex) return;
           setState(() {
             currentIndex = index;
           });
         },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Beranda',
+        items: [
+          Icon(
+            Icons.home_outlined,
+            size: 30,
+            color: currentIndex == 0 ? Colors.white : _activeColor,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.business),
-            label: 'Kos',
+          Icon(
+            Icons.business_outlined,
+            size: 30,
+            color: currentIndex == 1 ? Colors.white : _activeColor,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assessment_outlined),
-            label: 'Laporan',
+          Icon(
+            Icons.assessment_outlined,
+            size: 30,
+            color: currentIndex == 2 ? Colors.white : _activeColor,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            label: 'Pengaturan',
+          Icon(
+            Icons.settings_outlined,
+            size: 30,
+            color: currentIndex == 3 ? Colors.white : _activeColor,
           ),
         ],
       ),

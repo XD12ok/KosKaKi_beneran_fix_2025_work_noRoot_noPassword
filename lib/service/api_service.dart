@@ -31,7 +31,7 @@ class ApiService {
     String passwordConfirmation,
     String role,
   ) async {
-    final url = Uri.parse('$baseUrl/register');
+    final url = Uri.parse('$baseUrl/auth/register?');
 
     try {
       final response = await http.post(
@@ -58,7 +58,7 @@ class ApiService {
 
   // LOGIN
   Future<String?> login(String email, String password) async {
-    final url = Uri.parse('$baseUrl/login');
+    final url = Uri.parse('$baseUrl/auth/login?');
 
     try {
       final response = await http.post(
@@ -155,7 +155,7 @@ class ApiService {
 
   // FORGOT PASSWORD
   Future<bool> forgotPassword(String email) async {
-    final url = Uri.parse('$baseUrl/forgot-password');
+    final url = Uri.parse('$baseUrl/auth/forgot-password');
 
     try {
       final response = await http.post(

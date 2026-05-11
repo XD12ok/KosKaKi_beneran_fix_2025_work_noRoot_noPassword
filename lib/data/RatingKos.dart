@@ -12,6 +12,7 @@ class RatingKos {
     return list.reduce((a, b) => a + b) / list.length;
   }
 
+
   static int getTotal(String kosName) {
     return data[kosName]?.length ?? 0;
   }

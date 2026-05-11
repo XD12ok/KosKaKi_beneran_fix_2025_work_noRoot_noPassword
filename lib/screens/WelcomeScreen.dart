@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:koskaki/screens/auth/signup_page.dart';
+import 'package:koskaki/screens/Resident/HomePage.dart';
+import 'package:koskaki/screens/Owner/OwnerPage.dart';
+
+
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -120,6 +124,50 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               ],
             ),
           ),
+
+          /// Tombol Pemilik & Anak Kos
+  //         if (showRoles)
+  //           AnimatedPositioned(
+  //             duration: const Duration(milliseconds: 700),
+  //             curve: Curves.easeOutBack,
+  //             bottom: 50,
+  //             left: 30,
+  //             right: 30,
+  //             child: Column(
+  //               children: [
+  //                 _roleButton(
+  //                   "Masuk sebagai pemilik",
+  //                   Icons.home,
+  //                       () {
+  //                     Navigator.push(
+  //                       context,
+  //                       MaterialPageRoute(
+  //                         builder: (_) => const OwnerHomePage(),
+  //                       ),
+  //                     );
+  //                   },
+  //                 ),
+  //                 const SizedBox(height: 30),
+  //                 _roleButton(
+  //                   "Masuk sebagai penghuni",
+  //                   Icons.people,
+  //                       () {
+  //                     Navigator.push(
+  //                       context,
+  //                       MaterialPageRoute(
+  //                         builder: (_) =>
+  //                         const HomePage(),
+  //                       ),
+  //                     );
+  //                   },
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
           /// Tombol Pemilik & Anak Kos
           if (showRoles)
