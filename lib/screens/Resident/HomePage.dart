@@ -1,7 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:koskaki/data/dummy_kos.dart';
+import 'package:koskaki/models/kos_model.dart';
+import 'package:koskaki/data/RatingKos.dart';
+import 'package:koskaki/screens/Resident/DetailKos_page.dart';
+import 'package:koskaki/screens/Resident/Profile.dart';
+import 'package:koskaki/screens/Resident/search_page.dart';
+import 'package:koskaki/screens/Resident/KosTermurah_page.dart';
+import 'package:koskaki/screens/Resident/KosTerbaru_page.dart';
+import 'package:koskaki/screens/Resident/KosTerlengkap_page.dart';
+import 'package:koskaki/screens/Resident/RiwayatPemesanan_page.dart';
 import 'package:koskaki/service/api_service.dart';
-import 'QrScan.dart';
-import 'Profile.dart';
+
+const primaryColor = Color(0xFF2D2F8F);
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,22 +21,26 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  List<KosModel> filteredKos = [];
+
   Map<String, dynamic>? userData;
   bool loading = true;
 
   @override
   void initState() {
     super.initState();
+
+    /// ✅ tetap load kos
+    filteredKos = dummyKos.where((k) => !k.isHidden).toList();
+
+    /// ✅ ambil user API
     loadUser();
   }
 
   Future<void> loadUser() async {
     try {
       final api = ApiService();
-
       final user = await api.getUser();
-
-      print("USER API: $user");
 
       if (user == null) {
         setState(() => loading = false);
@@ -37,7 +51,6 @@ class _HomePageState extends State<HomePage> {
         userData = {
           "username": user['name'] ?? "User",
           "email": user['email'],
-          "avatar": null, // kalau API belum ada avatar
         };
         loading = false;
       });
@@ -47,203 +60,298 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// ✅ pakai versi average (lebih bagus)
+  Widget buildRating(String name) {
+    final rating = RatingKos.getAverage(name);
+
+    return Row(
+      children: [
+        Row(
+          children: List.generate(5, (index) {
+            return Icon(
+              index < rating.round()
+                  ? Icons.star
+                  : Icons.star_border,
+              size: 14,
+              color: Colors.amber,
+            );
+          }),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          rating == 0 ? "-" : rating.toStringAsFixed(1),
+          style: const TextStyle(fontSize: 11),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    buildProfileHeader(context),
-                    const SizedBox(height: 20),
-                    buildSearchBar(),
-                    const SizedBox(height: 20),
-                    buildMenuCategory(),
-                    const SizedBox(height: 25),
-                    const Text(
-                      "Riwayat Pemesanan",
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+
+              /// ================= HEADER =================
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ProfilePage(),
+                        ),
+                      );
+                    },
+                    child: const CircleAvatar(
+                      radius: 25,
+                      backgroundImage: AssetImage("assets/profile.jpg"),
                     ),
-                    const SizedBox(height: 10),
-                    _riwayatCard(),
-                    const SizedBox(height: 25),
-                    const Text(
-                      "Rekomendasi Terbaik",
-                      style: TextStyle(
-                          fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Hai, ${userData?['username'] ?? 'User'}",
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          "${userData?['email'] ?? '-'}",
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 10),
-                    _rekomendasiCard(),
-                  ],
+                  ),
+
+                  const Icon(Icons.favorite_border),
+                  const SizedBox(width: 12),
+                  const Icon(Icons.notifications_none),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              /// ================= SEARCH =================
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SearchPage(),
+                    ),
+                  );
+                },
+                child: Container(
+                  height: 50,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: primaryColor),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.search),
+                      SizedBox(width: 10),
+                      Expanded(child: Text("Cari Kos Anda")),
+                    ],
+                  ),
                 ),
               ),
-      ),
-    );
-  }
 
-  Widget buildProfileHeader(BuildContext context) {
-    if (userData == null) {
-      return Row(
-        children: const [
-          CircleAvatar(radius: 28, child: Icon(Icons.person)),
-          SizedBox(width: 12),
-          Text("Memuat...", style: TextStyle(fontSize: 18)),
-        ],
-      );
-    }
+              const SizedBox(height: 20),
 
-    final avatar = userData!['avatar'];
+              /// ================= MENU =================
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const KosTermurahPage(),
+                        ),
+                      );
+                    },
+                    child: const MenuItem(Icons.attach_money, "Termurah"),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const KosTerbaruPage(),
+                        ),
+                      );
+                    },
+                    child: const MenuItem(Icons.home, "Terbaru"),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const KosTerlengkapPage(),
+                        ),
+                      );
+                    },
+                    child: const MenuItem(Icons.grid_view, "Terlengkap"),
+                  ),
+                ],
+              ),
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        GestureDetector(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ProfilePage()),
-            );
-          },
-          child: CircleAvatar(
-            radius: 28,
-            backgroundImage: avatar != null
-                ? NetworkImage(avatar)
-                : const AssetImage("assets/profile.jpg") as ImageProvider,
+              const SizedBox(height: 18),
+
+              /// ================= RIWAYAT =================
+              const Text("Riwayat Pemesanan",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+
+              const SizedBox(height: 12),
+
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RiwayatPemesananPage(),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: primaryColor),
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.asset(
+                          "assets/cover1.png",
+                          width: 95,
+                          height: 95,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text("Coer Kos",
+                                style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
+                            buildRating("Coer Kos"),
+                            const SizedBox(height: 6),
+                            const Text(
+                              "Sangat nyaman dan worth it!",
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 22),
+
+              /// ================= REKOMENDASI =================
+              const Text("Rekomendasi Terbaik",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+
+              const SizedBox(height: 12),
+
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filteredKos.length,
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 14,
+                  mainAxisExtent: 260,
+                ),
+                itemBuilder: (context, index) {
+                  final kos = filteredKos[index];
+
+                  return GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => DetailKosPage(kos: kos),
+                        ),
+                      );
+
+                      setState(() {});
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: primaryColor),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Image.asset(kos.image, height: 120, fit: BoxFit.cover),
+                          const SizedBox(height: 6),
+                          Text(kos.name),
+                          buildRating(kos.name),
+                          const Spacer(),
+                          Text(kos.price),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ),
-
-        const SizedBox(width: 12),
-
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Hai, ${userData?['username'] ?? 'User'}",
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              "${userData?['email'] ?? '-'}",
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-
-        const Spacer(),
-
-        Row(
-          children: [
-            const Icon(Icons.favorite_border, size: 26),
-            const SizedBox(width: 14),
-            const Icon(Icons.notifications_none, size: 26),
-            const SizedBox(width: 14),
-            GestureDetector(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const QrScanPage()),
-                );
-              },
-              child: const Icon(Icons.qr_code_scanner, size: 28),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget buildSearchBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(40),
-        color: const Color(0xFFF1F1F1),
-      ),
-      child: const TextField(
-        decoration: InputDecoration(
-          hintText: "Cari kost anda",
-          border: InputBorder.none,
-          icon: Icon(Icons.search),
-        ),
       ),
     );
   }
+}
 
-  // MENU
-  Widget buildMenuCategory() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        _menuItem(Icons.attach_money, "Termurah"),
-        _menuItem(Icons.inventory_2_outlined, "Terlengkap"),
-        _menuItem(Icons.home_work_outlined, "Terbaru"),
-      ],
-    );
-  }
+class MenuItem extends StatelessWidget {
+  final IconData icon;
+  final String title;
 
-  Widget _menuItem(IconData icon, String label) {
+  const MenuItem(this.icon, this.title, {super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(14),
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            color: Color(0xFF020477),
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: primaryColor,
+            borderRadius: BorderRadius.circular(16),
           ),
-          child: Icon(icon, size: 28, color: Colors.white),
+          child: Icon(icon, color: Colors.white),
         ),
-        const SizedBox(height: 6),
-        Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Text(title),
       ],
-    );
-  }
-
-  Widget _riwayatCard() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(
-              "assets/kost1.jpg",
-              width: 90,
-              height: 90,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Flexible(
-            child: Text("Contoh riwayat..."),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _rekomendasiCard() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: const Text("Contoh rekomendasi..."),
     );
   }
 }

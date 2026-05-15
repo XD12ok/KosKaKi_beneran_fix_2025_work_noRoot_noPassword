@@ -4,7 +4,7 @@ import 'package:koskaki/screens/Owner/OwnerPage.dart';
 import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
-import '../../service/auth_service.dart';
+import 'package:koskaki/service/auth_service.dart';
 import 'signup_page.dart';
 import 'package:koskaki/service/api_service.dart';
 
@@ -79,9 +79,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
 
               const SizedBox(height: 22),
-
               const SizedBox(height: 10),
-
               isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : KKButton(
@@ -94,27 +92,21 @@ class _LoginPageState extends State<LoginPage> {
                           showErrorDialog("Email dan password wajib diisi.");
                           return;
                         }
-
                         setState(() {
                           isLoading = true;
                         });
-
                         try {
                           ApiService api = ApiService();
-
                           // ✅ LOGIN
                           final token =
                               await api.login(emailText, passText);
-
                           if (token == null) {
                             setState(() => isLoading = false);
                             showErrorDialog("Email atau password salah.");
                             return;
                           }
-
                           // ✅ AMBIL USER
                           final user = await api.getUser();
-
                           if (user == null) {
                             setState(() => isLoading = false);
                             showErrorDialog("Gagal mengambil data user.");

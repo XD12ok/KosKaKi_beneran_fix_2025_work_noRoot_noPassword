@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:koskaki/screens/auth/signup_page.dart';
+import 'package:koskaki/screens/Resident/HomePage.dart';
+import 'package:koskaki/screens/Owner/OwnerPage.dart';
+
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
 
@@ -14,16 +17,12 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final height = MediaQuery
-        .of(context)
-        .size
-        .height;
+    final height = MediaQuery.of(context).size.height;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
-
           /// Logo Mambu
           Positioned(
             top: 80,
@@ -31,10 +30,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             right: 0,
             child: Column(
               children: [
-                Image.asset(
-                  "assets/logo1.png",
-                  height: 150,
-                ),
+                Image.asset("assets/logo1.png", height: 150),
                 const SizedBox(height: 10),
                 const Text(
                   "Kost Kontrakan Kita",
@@ -43,7 +39,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     fontWeight: FontWeight.w500,
                     color: Colors.black87,
                   ),
-                )
+                ),
               ],
             ),
           ),
@@ -55,10 +51,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             bottom: startAnimation ? 140 : 200,
             left: 0,
             right: 0,
-            child: Image.asset(
-              "assets/people.png",
-              height: 300,
-            ),
+            child: Image.asset("assets/people.png", height: 300),
           ),
 
           /// Biru Biru Gatel
@@ -121,43 +114,49 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ),
 
-          /* if (showRoles)
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 700),
-              curve: Curves.easeOutBack,
-              bottom: 50,sad
-              left: 30,
-              right: 30,
-              child: Column(
-                children: [
-                  _roleButton(
-                    "Masuk sebagai pemilik",
-                    Icons.home,
-                        () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const OwnerHomePage(), // langsung ke halaman pemilik
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 30),
-                  _roleButton(
-                    "Masuk sebagai penghuni",
-                    Icons.people,
-                        () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const HomePage(),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ), */
+          /// Tombol Pemilik & Anak Kos
+          //         if (showRoles)
+          //           AnimatedPositioned(
+          //             duration: const Duration(milliseconds: 700),
+          //             curve: Curves.easeOutBack,
+          //             bottom: 50,
+          //             left: 30,
+          //             right: 30,
+          //             child: Column(
+          //               children: [
+          //                 _roleButton(
+          //                   "Masuk sebagai pemilik",
+          //                   Icons.home,
+          //                       () {
+          //                     Navigator.push(
+          //                       context,
+          //                       MaterialPageRoute(
+          //                         builder: (_) => const OwnerHomePage(),
+          //                       ),
+          //                     );
+          //                   },
+          //                 ),
+          //                 const SizedBox(height: 30),
+          //                 _roleButton(
+          //                   "Masuk sebagai penghuni",
+          //                   Icons.people,
+          //                       () {
+          //                     Navigator.push(
+          //                       context,
+          //                       MaterialPageRoute(
+          //                         builder: (_) =>
+          //                         const HomePage(),
+          //                       ),
+          //                     );
+          //                   },
+          //                 ),
+          //               ],
+          //             ),
+          //           ),
+          //       ],
+          //     ),
+          //   );
+          // }
 
           /// Tombol Pemilik & Anak Kos
           if (showRoles)
@@ -169,32 +168,23 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               right: 30,
               child: Column(
                 children: [
-                  _roleButton(
-                    "Masuk sebagai pemilik",
-                    Icons.home,
-                        () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const SignUpPage(role: "owner"),
-                        ),
-                      );
-                    },
-                  ),
+                  _roleButton("Masuk sebagai pemilik", Icons.home, () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SignUpPage(role: "owner"),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 30),
-                  _roleButton(
-                    "Masuk sebagai penghuni",
-                    Icons.people,
-                        () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                          const SignUpPage(role: "residents"),
-                        ),
-                      );
-                    },
-                  ),
+                  _roleButton("Masuk sebagai penghuni", Icons.people, () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const SignUpPage(role: "residents"),
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),
@@ -216,11 +206,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         onTap: onTap,
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 40,
-              color: Colors.blue,
-            ),
+            Icon(icon, size: 40, color: Colors.blue),
             const SizedBox(width: 20),
             Expanded(
               child: Text(

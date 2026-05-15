@@ -15,19 +15,16 @@ Future<String?> uploadAvatar(File file, String userId) async {
     fileOptions: const FileOptions(upsert: true),
   );
 
-  if (res != null) {
-    final url = supabase.storage.from('avatars').getPublicUrl(fileName);
+  final url = supabase.storage.from('avatars').getPublicUrl(fileName);
 
-    // SIMPAN URL KE DATABASE
-    await supabase
-        .from('profiles')
-        .update({
-      'avatar_url': url,
-    })
-        .eq('id', userId);
+  // SIMPAN URL KE DATABASE
+  await supabase
+      .from('profiles')
+      .update({
+    'avatar_url': url,
+  })
+      .eq('id', userId);
 
-    return url;
-  }
+  return url;
 
-  return null;
 }

@@ -15,7 +15,7 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Supabase (kalau masih dipakai)
+  // Supabase
   await Supabase.initialize(
     url: 'https://ggawtlojbtrlyxudenvw.supabase.co',
     anonKey: 'YOUR_KEY',
@@ -31,14 +31,12 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: CheckAuthPage(), // 🔥 AUTO LOGIN
+      home: CheckAuthPage(), // ✅ sekarang valid
     );
   }
 }
 
-// ========================================
-// 🔥 AUTO LOGIN CHECKER
-// ========================================
+/// ✅ INI YANG DIPERBAIKI
 class CheckAuthPage extends StatefulWidget {
   const CheckAuthPage({super.key});
 
@@ -57,7 +55,7 @@ class _CheckAuthPageState extends State<CheckAuthPage> {
   Future<void> checkLogin() async {
     final api = ApiService();
 
-    // ✅ CEK TOKEN
+    // ✅ cek token
     final token = await api.getToken();
 
     if (token == null) {
@@ -65,7 +63,7 @@ class _CheckAuthPageState extends State<CheckAuthPage> {
       return;
     }
 
-    // ✅ CEK USER
+    // ✅ cek user
     final user = await api.getUser();
 
     if (user == null) {
