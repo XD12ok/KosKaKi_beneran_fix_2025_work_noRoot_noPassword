@@ -13,12 +13,12 @@ class KostPage extends StatefulWidget {
 }
 
 class _KostPageState extends State<KostPage> {
-
   List<dynamic> kostList = [];
   bool isLoading = true;
 
   String getKostPrice(Map<String, dynamic> kost) {
-    final price = kost['price_perMonth'] ??
+    final price =
+        kost['price_perMonth'] ??
         kost['price_per_month'] ??
         kost['pricePerMonth'] ??
         kost['price_permonth'] ??
@@ -56,11 +56,9 @@ class _KostPageState extends State<KostPage> {
         setState(() {
           if (decoded['data'] != null && decoded['data']['data'] != null) {
             kostList = decoded['data']['data'];
-          } 
-          else if (decoded['data'] != null) {
+          } else if (decoded['data'] != null) {
             kostList = decoded['data'];
-          } 
-          else if (decoded['properties'] != null) {
+          } else if (decoded['properties'] != null) {
             kostList = decoded['properties'];
           } else if (decoded is List) {
             kostList = decoded;
@@ -87,184 +85,173 @@ class _KostPageState extends State<KostPage> {
       backgroundColor: const Color.fromARGB(255, 255, 255, 255),
 
       body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : kostList.isEmpty
-              ? const Center(
-                  child: Text(
-                    "Belum ada kost",
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: getKost,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: kostList.length,
-                    itemBuilder: (context, index) {
-                      final kost = kostList[index];
+          ? const Center(child: Text("Belum ada kost"))
+          : RefreshIndicator(
+              onRefresh: getKost,
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: kostList.length,
+                itemBuilder: (context, index) {
+                  final kost = kostList[index];
 
-                      final kostData = Map<String, dynamic>.from(kost);
+                  final kostData = Map<String, dynamic>.from(kost);
 
-                        print("KOST DATA:");
-                        print(jsonEncode(kostData));
+                  print("KOST DATA:");
+                  print(jsonEncode(kostData));
 
-                      final title = kostData['title'] ?? "Tanpa Nama";
-                      
-                      final price = getKostPrice(kostData);
-                      final availableRoom = kostData['max_people']?.toString() ?? "0";
+                  final title = kostData['title'] ?? "Tanpa Nama";
 
-                      String thumbnail = "";
-                      if (kostData['main_image'] != null) {
-                        if (kostData['main_image'] is String) {
-                          thumbnail = kostData['main_image'];
-                        } else if (kostData['main_image']['image_url'] != null) {
-                          thumbnail = kostData['main_image']['image_url'];
-                        }
-                      } 
-                      else if (kostData['images'] != null && kostData['images'].isNotEmpty) {
-                        thumbnail = kostData['images'][0]['image_url'] ?? "";
-                      }
+                  final price = getKostPrice(kostData);
+                  final availableRoom =
+                      kostData['max_people']?.toString() ?? "0";
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                  String thumbnail = "";
+                  if (kostData['main_image'] != null) {
+                    if (kostData['main_image'] is String) {
+                      thumbnail = kostData['main_image'];
+                    } else if (kostData['main_image']['image_url'] != null) {
+                      thumbnail = kostData['main_image']['image_url'];
+                    }
+                  } else if (kostData['images'] != null &&
+                      kostData['images'].isNotEmpty) {
+                    thumbnail = kostData['images'][0]['image_url'] ?? "";
+                  }
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-
-                            ClipRRect(
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(20),
-                                topRight: Radius.circular(20),
-                              ),
-                              child: thumbnail.isNotEmpty
-                                  ? Image.network(
-                                      thumbnail,
-                                      height: 190,
-                                      width: double.infinity,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
-                                        return Container(
-                                          height: 190,
-                                          color: Colors.grey[300],
-                                          child: const Icon(
-                                            Icons.image,
-                                            size: 60,
-                                            color: Colors.grey,
-                                          ),
-                                        );
-                                      },
-                                    )
-                                  : Container(
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(20),
+                            topRight: Radius.circular(20),
+                          ),
+                          child: thumbnail.isNotEmpty
+                              ? Image.network(
+                                  thumbnail,
+                                  height: 190,
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
                                       height: 190,
                                       color: Colors.grey[300],
-                                      child: const Center(
-                                        child: Icon(
-                                          Icons.image,
-                                          size: 60,
-                                          color: Colors.grey,
-                                        ),
+                                      child: const Icon(
+                                        Icons.image,
+                                        size: 60,
+                                        color: Colors.grey,
                                       ),
+                                    );
+                                  },
+                                )
+                              : Container(
+                                  height: 190,
+                                  color: Colors.grey[300],
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.image,
+                                      size: 60,
+                                      color: Colors.grey,
                                     ),
-                            ),
+                                  ),
+                                ),
+                        ),
 
-                            Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // TITLE
+                              Text(
+                                title,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                              const SizedBox(height: 10),
+
+                              // PRICE
+                              Text(
+                                "Rp $price / bulan",
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0A0E50),
+                                ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // AVAILABLE ROOM
+                              Row(
                                 children: [
-                                  // TITLE
-                                  Text(
-                                    title,
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
                                     ),
-                                  ),
-
-                                  const SizedBox(height: 10),
-
-                                  // PRICE
-                                  Text(
-                                    "Rp $price / bulan",
-                                    style: const TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF0A0E50),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(30),
                                     ),
-                                  ),
-
-                                  const SizedBox(height: 12),
-
-                                  // AVAILABLE ROOM
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
+                                    child: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.bed,
+                                          size: 18,
+                                          color: Colors.green,
                                         ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(30),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          "$availableRoom kamar tersedia",
+                                          style: const TextStyle(
+                                            color: Colors.green,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                        child: Row(
-                                          children: [
-                                            const Icon(
-                                              Icons.bed,
-                                              size: 18,
-                                              color: Colors.green,
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              "$availableRoom kamar tersedia",
-                                              style: const TextStyle(
-                                                color: Colors.green,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
 
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => const AddKostPage(),
-            ),
+            MaterialPageRoute(builder: (_) => const AddKostPage()),
           );
 
           getKost();
         },
         backgroundColor: const Color(0xFF0A0E50),
-        child: const Icon(
-          Icons.add,
-          color: Colors.white,
-        ),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

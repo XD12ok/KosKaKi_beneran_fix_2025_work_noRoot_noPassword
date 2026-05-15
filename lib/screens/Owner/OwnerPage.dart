@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart'; // Import package baru
 import 'package:koskaki/service/api_service.dart';
-import 'package:koskaki/screens/Owner/KostPage.dart'; 
+import 'package:koskaki/screens/Owner/KostPage.dart';
 import 'package:koskaki/screens/Owner/Laporan.dart';
 import 'package:koskaki/screens/Owner/PengaturanOwner.dart';
+import 'package:koskaki/screens/Owner/ListChat.dart';
 
 class OwnerHomePage extends StatefulWidget {
   const OwnerHomePage({super.key});
@@ -18,8 +19,12 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   int currentIndex = 0;
 
   // Warna custom menyesuaikan gambar
-  final Color _barColor = const Color(0xFFEAF5EB); // Hijau sangat muda (background bar)
-  final Color _activeColor = const Color(0xFF0A0E50); // Hijau tua (lingkaran aktif)
+  final Color _barColor = const Color(
+    0xFFEAF5EB,
+  ); // Hijau sangat muda (background bar)
+  final Color _activeColor = const Color(
+    0xFF0A0E50,
+  ); // Hijau tua (lingkaran aktif)
 
   @override
   void initState() {
@@ -40,9 +45,7 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
       }
 
       setState(() {
-        userData = {
-          "username": response['name'] ?? "Owner"
-        };
+        userData = {"username": response['name'] ?? "Owner"};
         loading = false;
       });
     } catch (e) {
@@ -55,15 +58,13 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       // Tambahkan warna background Scaffold agar animasi transisi kurva terlihat mulus
-      backgroundColor: const Color.fromARGB(255, 255, 255, 255), 
+      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         automaticallyImplyLeading: false,
         title: Text(
-          loading
-              ? "Hai, ..."
-              : "Hai, ${userData?['username'] ?? 'Owner'}",
+          loading ? "Hai, ..." : "Hai, ${userData?['username'] ?? 'Owner'}",
           style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
@@ -72,8 +73,8 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.black),
-            onPressed: () {},
+            icon: const Icon(Icons.message, color: Colors.black),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ChatListOwnerPage())),
           ),
           IconButton(
             icon: const Icon(Icons.person_outline, color: Colors.black),
@@ -85,16 +86,10 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
       body: IndexedStack(
         index: currentIndex,
         children: [
-          BerandaPage(
-            userData: userData,
-            loading: loading,
-          ),
-          KostPage(), 
-          LaporanPage(), 
-          PengaturanOwnerPage(
-            userData: userData,
-            loading: loading,
-          ),
+          BerandaPage(userData: userData, loading: loading),
+          KostPage(),
+          LaporanPage(),
+          PengaturanOwnerPage(userData: userData, loading: loading),
         ],
       ),
 
@@ -103,7 +98,7 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
         height: 65.0,
         color: _barColor,
         buttonBackgroundColor: _activeColor,
-        backgroundColor: Colors.white, 
+        backgroundColor: Colors.white,
         animationCurve: Curves.easeInOut,
         animationDuration: const Duration(milliseconds: 300),
         onTap: (index) {
@@ -142,11 +137,7 @@ class BerandaPage extends StatelessWidget {
   final Map<String, dynamic>? userData;
   final bool loading;
 
-  const BerandaPage({
-    super.key,
-    required this.userData,
-    required this.loading,
-  });
+  const BerandaPage({super.key, required this.userData, required this.loading});
 
   @override
   Widget build(BuildContext context) {
@@ -208,10 +199,7 @@ class BerandaPage extends StatelessWidget {
 
                 Text(
                   'Tambah lebih banyak lagi kos anda',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                 ),
 
                 const SizedBox(height: 16),
@@ -265,7 +253,7 @@ class BerandaPage extends StatelessWidget {
               color: Colors.black.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
-            )
+            ),
           ],
         ),
         child: Row(
@@ -295,10 +283,7 @@ class BerandaPage extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                   ),
                 ],
               ),

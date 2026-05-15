@@ -1,17 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:koskaki/service/api_service.dart'; // ✅ pakai API
+import 'package:koskaki/service/api_service.dart';
 import 'package:koskaki/screens/WelcomeScreen.dart';
 import 'package:koskaki/screens/Owner/Lupa_password.dart';
+import 'package:koskaki/screens/Owner/ListChat.dart';
 
 class PengaturanOwnerPage extends StatelessWidget {
   final Map<String, dynamic>? userData;
   final bool loading;
 
-  const PengaturanOwnerPage({
-    super.key,
-    this.userData,
-    this.loading = false,
-  });
+  const PengaturanOwnerPage({super.key, this.userData, this.loading = false});
 
   Future<void> _logout(BuildContext context) async {
     try {
@@ -86,10 +83,7 @@ class PengaturanOwnerPage extends StatelessWidget {
                       const SizedBox(height: 4),
                       const Text(
                         "Pemilik Kos",
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
                       ),
                     ],
                   ),
@@ -118,12 +112,9 @@ class PengaturanOwnerPage extends StatelessWidget {
               Navigator.push(
                 context,
                 PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>  LupaPasswordPage(),
+                  pageBuilder: (_, __, ___) => LupaPasswordPage(),
                   transitionsBuilder: (_, animation, __, child) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    );
+                    return FadeTransition(opacity: animation, child: child);
                   },
                   transitionDuration: const Duration(milliseconds: 300),
                 ),
@@ -131,10 +122,13 @@ class PengaturanOwnerPage extends StatelessWidget {
             },
           ),
           _buildSettingsItem(
-            icon: Icons.notifications_outlined,
-            title: 'Notifikasi',
-            subtitle: 'Atur notifikasi aplikasi',
-            onTap: () {},
+            icon: Icons.messenger_outline,
+            title: 'Pesan',
+            subtitle: 'Balas Pesan Dari Pengguna',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => ChatListOwnerPage()),
+            ),
           ),
           _buildSettingsItem(
             icon: Icons.help_outline,
@@ -218,10 +212,7 @@ class PengaturanOwnerPage extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
                 ],
               ),

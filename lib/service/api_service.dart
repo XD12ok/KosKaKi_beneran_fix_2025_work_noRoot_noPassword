@@ -67,10 +67,7 @@ class ApiService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: jsonEncode({
-          'email': email,
-          'password': password,
-        }),
+        body: jsonEncode({'email': email, 'password': password}),
       );
 
       final data = jsonDecode(response.body);
@@ -103,6 +100,9 @@ class ApiService {
           'Authorization': 'Bearer $token',
         },
       );
+
+      print('GET USER STATUS: ${response.statusCode}');
+      print('GET USER BODY: ${response.body}');
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -176,7 +176,10 @@ class ApiService {
 
   // RESET PASSWORD
   Future<bool> resetPassword(
-      String email, String password, String confirmPassword) async {
+    String email,
+    String password,
+    String confirmPassword,
+  ) async {
     final url = Uri.parse('$baseUrl/reset-password');
 
     try {
@@ -197,6 +200,204 @@ class ApiService {
     } catch (e) {
       print("ERROR RESET: $e");
       return false;
+    }
+  }
+
+  // =========================
+  // LIVE CHAT
+  // =========================
+
+  // GET SEMUA CONVERSATION
+  Future<List<dynamic>> getConversations() async {
+    final token = await getToken();
+
+    if (token == null) {
+      print('TOKEN NULL');
+      return [];
+    }
+
+    final url = Uri.parse('$baseUrl/conversations');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('GET CONVERSATIONS STATUS: ${response.statusCode}');
+      print('GET CONVERSATIONS BODY: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data is List) {
+          return data;
+        }
+
+        if (data is Map<String, dynamic>) {
+          if (data['data'] != null && data['data'] is List) {
+            return data['data'];
+          }
+
+          if (data['conversations'] != null && data['conversations'] is List) {
+            return data['conversations'];
+          }
+        }
+
+        return [];
+      }
+
+      return [];
+    } catch (e) {
+      print('ERROR GET CONVERSATIONS: $e');
+      return [];
+    }
+  }
+
+  // CREATE OR GET EXISTING CONVERSATION
+  Future<Map<String, dynamic>?> createOrGetConversation({
+    required int ownerId,
+    required int placePropertyId,
+  }) async {
+    final token = await getToken();
+
+    if (token == null) {
+      print('TOKEN NULL');
+      return null;
+    }
+
+    final url = Uri.parse('$baseUrl/conversations');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'owner_id': ownerId,
+          'place_property_id': placePropertyId,
+        }),
+      );
+
+      print('CREATE CONVERSATION STATUS: ${response.statusCode}');
+      print('CREATE CONVERSATION BODY: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+
+        if (data is Map<String, dynamic>) {
+          if (data['data'] != null && data['data'] is Map<String, dynamic>) {
+            return data['data'];
+          }
+
+          if (data['conversation'] != null &&
+              data['conversation'] is Map<String, dynamic>) {
+            return data['conversation'];
+          }
+
+          return data;
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('ERROR CREATE CONVERSATION: $e');
+      return null;
+    }
+  }
+
+  // GET ISI CHAT BERDASARKAN CONVERSATION ID
+  Future<List<dynamic>> getConversationMessages(int conversationId) async {
+    final token = await getToken();
+
+    if (token == null) {
+      print('TOKEN NULL');
+      return [];
+    }
+
+    final url = Uri.parse('$baseUrl/conversations/$conversationId/message');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('GET MESSAGE STATUS: ${response.statusCode}');
+      print('GET MESSAGE BODY: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data is List) {
+          return data;
+        }
+
+        if (data is Map<String, dynamic>) {
+          if (data['data'] != null && data['data'] is List) {
+            return data['data'];
+          }
+
+          if (data['messages'] != null && data['messages'] is List) {
+            return data['messages'];
+          }
+        }
+
+        return [];
+      }
+
+      return [];
+    } catch (e) {
+      print('ERROR GET MESSAGE: $e');
+      return [];
+    }
+  }
+
+  // KIRIM PESAN
+  Future<Map<String, dynamic>?> sendConversationMessage({
+    required int conversationId,
+    required String message,
+  }) async {
+    final token = await getToken();
+
+    if (token == null) {
+      print('TOKEN NULL');
+      return null;
+    }
+
+    final url = Uri.parse('$baseUrl/conversations/$conversationId/message');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'message': message}),
+      );
+
+      print('SEND MESSAGE STATUS: ${response.statusCode}');
+      print('SEND MESSAGE BODY: ${response.body}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      }
+
+      return null;
+    } catch (e) {
+      print('ERROR SEND MESSAGE: $e');
+      return null;
     }
   }
 }
