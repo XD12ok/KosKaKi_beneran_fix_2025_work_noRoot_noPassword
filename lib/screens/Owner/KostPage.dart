@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Owner/Add_kost.dart';
+import 'package:koskaki/screens/Owner/Detail_kost.dart';
 import 'package:koskaki/service/api_service.dart';
 
 class KostPage extends StatefulWidget {
@@ -97,29 +98,45 @@ class _KostPageState extends State<KostPage> {
   // GET IMAGE
   // =========================
 
-  String getThumbnail(Map<String, dynamic> kost) {
+  String getImage(
+      Map<String, dynamic> kost,
+      ) {
     String thumbnail = "";
 
     try {
+      // MAIN IMAGE
       if (kost['main_image'] != null) {
-        final mainImage = kost['main_image'];
+        final mainImage =
+        kost['main_image'];
 
         if (mainImage is String) {
           thumbnail = mainImage;
         } else if (mainImage is Map) {
-          thumbnail = mainImage['url']?.toString() ?? "";
+          thumbnail =
+              mainImage['url']
+                  ?.toString() ??
+                  "";
         }
       }
 
+      // IMAGES
       if (thumbnail.isEmpty &&
           kost['images'] != null &&
           kost['images'] is List &&
           kost['images'].isNotEmpty) {
-        thumbnail = kost['images'][0]['url']?.toString() ?? "";
+        thumbnail =
+            kost['images'][0]['url']
+                ?.toString() ??
+                "";
       }
 
-      if (thumbnail.isNotEmpty && !thumbnail.startsWith("http")) {
-        thumbnail = "https://koskaki-api.servermbud.online/storage/$thumbnail";
+      // FIX URL
+      if (thumbnail.isNotEmpty &&
+          !thumbnail.startsWith(
+            "http",
+          )) {
+        thumbnail =
+        "https://koskaki-api.servermbud.online/storage/$thumbnail";
       }
     } catch (e) {
       print("IMAGE ERROR: $e");
@@ -137,7 +154,10 @@ class _KostPageState extends State<KostPage> {
       final token = await ApiService().getToken();
 
       final response = await http.get(
-        Uri.parse("${ApiService.baseUrl}/my-properties"),
+        Uri.parse(
+          "${ApiService.baseUrl}/my-properties",
+        ),
+
         headers: {
           "Authorization": "Bearer $token",
           "Accept": "application/json",
@@ -190,163 +210,72 @@ class _KostPageState extends State<KostPage> {
               color: primaryColor,
               onRefresh: getKost,
 
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-
-                slivers: [
-                  SliverToBoxAdapter(child: _buildHeader()),
-
-                  if (kostList.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _buildEmptyState(),
-                    )
-                  else
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        childCount: kostList.length,
-                        (context, index) {
-                          final kost = Map<String, dynamic>.from(
-                            kostList[index],
-                          );
-
-                          final title = kost['title'] ?? "Tanpa Nama";
-
-                          final price = getAvailablePrice(kost);
-
-                          final maxPeople =
-                              kost['max_people']?.toString() ?? "0";
-
-                          final status = kost['status']?.toString() ?? "active";
-
-                          final cityName =
-                              kost['city']?['name']?.toString() ??
-                              "Lokasi belum tersedia";
-
-                          final thumbnail = getThumbnail(kost);
-
-                          return _buildKostCard(
-                            title: title,
-                            price: price,
-                            maxPeople: maxPeople,
-                            status: status,
-                            cityName: cityName,
-                            thumbnail: thumbnail,
-                            onTap: () {
-                              // pindah ke halaman detail kos
-                            },
-                          );
-                        },
-                      ),
-                    ),
-
-                  const SliverToBoxAdapter(child: SizedBox(height: 180)),
-                ],
-              ),
-            ),
-
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 85),
-
-        child: FloatingActionButton.extended(
-          backgroundColor: primaryColor,
-          elevation: 8,
-
-          icon: const Icon(Icons.add_home_work_outlined, color: Colors.white),
-
-          label: const Text(
-            "Tambah Kos",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        child: ListView.builder(
+          padding:
+          const EdgeInsets.all(
+            16,
           ),
 
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AddKostPage()),
+          itemCount:
+          kostList.length,
+
+          itemBuilder:
+              (context, index) {
+            final kost =
+            Map<String, dynamic>.from(
+              kostList[index],
             );
 
-            getKost();
-          },
-        ),
-      ),
-    );
-  }
+            final title =
+                kost['title'] ??
+                    "Tanpa Nama";
 
-  // =========================
-  // HEADER
-  // =========================
+            final price =
+            getAvailablePrice(
+              kost,
+            );
 
-  Widget _buildHeader() {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      padding: const EdgeInsets.all(20),
+            final maxPeople =
+                kost['max_people']
+                    ?.toString() ??
+                    "0";
 
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [primaryColor, const Color(0xFF18227A)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+            final thumbnail =
+            getImage(kost);
 
-        borderRadius: BorderRadius.circular(26),
+            return GestureDetector(
+              onTap: () async {
+                final result =
+                await Navigator.push(
+                  context,
 
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withOpacity(0.25),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                  MaterialPageRoute(
+                    builder:
+                        (_) =>
+                        DetailKostPage(
+                          kost: kost,
+                        ),
                   ),
+                );
 
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
+                if (result == true) {
+                  getKost();
+                }
+              },
 
-                  child: const Text(
-                    "Dashboard Owner",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+              child: Container(
+                margin:
+                const EdgeInsets.only(
+                  bottom: 16,
                 ),
 
-                const SizedBox(height: 14),
+                decoration:
+                BoxDecoration(
+                  color: Colors.white,
 
-                const Text(
-                  "Kelola Kos Kamu",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-
-                const SizedBox(height: 6),
-
-                Text(
-                  "${kostList.length} kos terdaftar",
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 14,
+                  borderRadius:
+                  BorderRadius.circular(
+                    20,
                   ),
                 ),
               ],
@@ -414,6 +343,7 @@ class _KostPageState extends State<KostPage> {
                 ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(26),
+
                     topRight: Radius.circular(26),
                   ),
 
@@ -429,103 +359,91 @@ class _KostPageState extends State<KostPage> {
                               return child;
                             }
 
-                            return _buildImagePlaceholder();
-                          },
+                          return Container(
+                            height:
+                            200,
 
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildImagePlaceholder(
-                              icon: Icons.broken_image_outlined,
-                              text: "Gambar gagal dimuat",
-                            );
-                          },
-                        )
-                      : _buildImagePlaceholder(),
-                ),
+                            color:
+                            Colors.grey[
+                            200],
 
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(26),
-                        topRight: Radius.circular(26),
-                      ),
+                            child:
+                            const Center(
+                              child:
+                              CircularProgressIndicator(),
+                            ),
+                          );
+                        },
 
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.black.withOpacity(0.05),
-                          Colors.black.withOpacity(0.45),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                  ),
-                ),
+                        errorBuilder:
+                            (
+                            context,
+                            error,
+                            stackTrace,
+                            ) {
+                          print(
+                            error,
+                          );
 
-                Positioned(
-                  top: 14,
-                  left: 14,
+                          return Container(
+                            height:
+                            200,
 
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 7,
-                    ),
+                            color:
+                            Colors.grey[
+                            300],
 
-                    decoration: BoxDecoration(
-                      color: status == "active"
-                          ? Colors.green.withOpacity(0.95)
-                          : Colors.orange.withOpacity(0.95),
+                            child:
+                            const Center(
+                              child:
+                              Icon(
+                                Icons
+                                    .broken_image,
 
-                      borderRadius: BorderRadius.circular(30),
-                    ),
+                                size:
+                                60,
 
-                    child: Row(
-                      children: [
-                        Icon(
-                          status == "active"
-                              ? Icons.check_circle
-                              : Icons.info_outline,
-                          color: Colors.white,
-                          size: 15,
-                        ),
+                                color:
+                                Colors.grey,
+                              ),
+                            ),
+                          );
+                        },
+                      )
+                          : Container(
+                        height:
+                        200,
 
-                        const SizedBox(width: 5),
+                        color:
+                        Colors.grey[
+                        300],
 
-                        Text(
-                          status == "active" ? "Aktif" : status,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                        child:
+                        const Center(
+                          child:
+                          Icon(
+                            Icons
+                                .image,
+
+                            size:
+                            60,
+
+                            color:
+                            Colors.grey,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                Positioned(
-                  right: 14,
-                  top: 14,
-
-                  child: Container(
-                    height: 38,
-                    width: 38,
-
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.92),
-                      shape: BoxShape.circle,
+                      ),
                     ),
 
-                    child: Icon(Icons.more_horiz, color: primaryColor),
-                  ),
-                ),
+                    // =========================
+                    // CONTENT
+                    // =========================
 
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 16,
+                    Padding(
+                      padding:
+                      const EdgeInsets.all(
+                        16,
+                      ),
 
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -539,27 +457,26 @@ class _KostPageState extends State<KostPage> {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 23,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight
+                                  .bold,
                         ),
                       ),
 
-                      const SizedBox(height: 6),
-
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on_rounded,
-                            size: 16,
-                            color: Colors.white,
+                          const SizedBox(
+                            height: 10,
                           ),
 
-                          const SizedBox(width: 4),
+                          Text(
+                            price,
 
-                          Expanded(
-                            child: Text(
-                              cityName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            style:
+                            const TextStyle(
+                              fontSize:
+                              18,
+
+                              fontWeight:
+                              FontWeight
+                                  .bold,
 
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.9),
@@ -600,32 +517,41 @@ class _KostPageState extends State<KostPage> {
 
                                 decoration: BoxDecoration(
                                   color: Colors.white,
+
                                   borderRadius: BorderRadius.circular(12),
                                 ),
 
-                                child: Icon(
-                                  Icons.payments_outlined,
-                                  color: primaryColor,
-                                  size: 20,
+                                decoration:
+                                BoxDecoration(
+                                  color: Colors
+                                      .green
+                                      .withOpacity(
+                                    0.1,
+                                  ),
+
+                                  borderRadius:
+                                  BorderRadius.circular(
+                                    30,
+                                  ),
                                 ),
-                              ),
 
-                              const SizedBox(width: 10),
-
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-
+                                child: Row(
                                   children: [
-                                    Text(
-                                      "Harga",
-                                      style: TextStyle(
-                                        color: Colors.grey.shade600,
-                                        fontSize: 12,
-                                      ),
+                                    const Icon(
+                                      Icons
+                                          .people,
+
+                                      size:
+                                      18,
+
+                                      color:
+                                      Colors.green,
                                     ),
 
-                                    const SizedBox(height: 2),
+                                    const SizedBox(
+                                      width:
+                                      6,
+                                    ),
 
                                     Text(
                                       price,
@@ -866,11 +792,16 @@ class _KostPageState extends State<KostPage> {
               ),
             ),
 
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AddKostPage()),
-              );
+        onPressed: () async {
+          await Navigator.push(
+            context,
+
+            MaterialPageRoute(
+              builder:
+                  (_) =>
+              const AddKostPage(),
+            ),
+          );
 
               getKost();
             },

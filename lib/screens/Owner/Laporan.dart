@@ -1,18 +1,117 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Owner/AcceptKost.dart';
+import 'package:koskaki/service/api_service.dart';
 
-class LaporanPage extends StatelessWidget {
+class LaporanPage extends StatefulWidget {
   const LaporanPage({super.key});
+
+  @override
+  State<LaporanPage> createState() => _LaporanPageState();
+}
+
+class _LaporanPageState extends State<LaporanPage> {
+  int totalIncome = 0;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchReport();
+  }
+
+  // =========================
+  // FETCH TOTAL INCOME
+  // =========================
+  Future<void> fetchReport() async {
+    try {
+      final res = await http.get(
+        Uri.parse("${ApiService.baseUrl}/reports/total-income"),
+        headers: {
+          "Accept": "application/json",
+        },
+      );
+
+      print(res.body);
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+
+        setState(() {
+          totalIncome = data['total_income'] ?? 0;
+          isLoading = false;
+        });
+      } else {
+        setState(() => isLoading = false);
+      }
+    } catch (e) {
+      print("ERROR REPORT: $e");
+      setState(() => isLoading = false);
+    }
+  }
+
+  // =========================
+  // FORMAT RUPIAH (OPTIONAL)
+  // =========================
+  String formatRupiah(int value) {
+    return "Rp ${value.toString()}";
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+      backgroundColor: Colors.white,
+
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
+
+              // =========================
+              // TOTAL INCOME CARD
+              // =========================
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A0E50),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: isLoading
+                    ? const Center(
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                  ),
+                )
+                    : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Total Uang Masuk",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      formatRupiah(totalIncome),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // =========================
+              // PAYMENT CARD
+              // =========================
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
@@ -24,9 +123,7 @@ class LaporanPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
@@ -38,17 +135,15 @@ class LaporanPage extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 12),
-
-                        Expanded(
+                        const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
+                            children: [
                               Text(
                                 "Kost Premium Nugraha",
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
-                                  color: Colors.black,
                                 ),
                               ),
                               SizedBox(height: 4),
@@ -66,10 +161,11 @@ class LaporanPage extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    // STATUS
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.orange.shade100,
                         borderRadius: BorderRadius.circular(20),
@@ -96,15 +192,15 @@ class LaporanPage extends StatelessWidget {
 
                     const SizedBox(height: 10),
 
-                    // PROGRESS BAR
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: LinearProgressIndicator(
                         value: 0.5,
                         minHeight: 8,
                         backgroundColor: Colors.grey.shade300,
-                        valueColor:
-                            const AlwaysStoppedAnimation<Color>(Colors.red),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Colors.red,
+                        ),
                       ),
                     ),
 
@@ -123,22 +219,22 @@ class LaporanPage extends StatelessWidget {
                         onPressed: () {},
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0A0E50),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
                         ),
                         child: const Text(
                           "Ingatkan",
                           style: TextStyle(color: Colors.white),
                         ),
                       ),
-                    )
+                    ),
                   ],
                 ),
               ),
 
               const SizedBox(height: 20),
 
+              // =========================
+              // REQUEST CARD
+              // =========================
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -169,13 +265,13 @@ class LaporanPage extends StatelessWidget {
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                           ),
-                          Text(
+                          const Text(
                             "Kunjungi Profil",
                             style: TextStyle(
                               color: Colors.indigo,
                               fontSize: 12,
                             ),
-                          )
+                          ),
                         ],
                       ),
 
@@ -192,7 +288,6 @@ class LaporanPage extends StatelessWidget {
                       const SizedBox(height: 12),
 
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           ClipRRect(
                             borderRadius: BorderRadius.circular(10),
@@ -204,42 +299,26 @@ class LaporanPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          Expanded(
+                          const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    const Text(
-                                      "Kost Arsa IT",
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade200,
-                                        borderRadius:
-                                            BorderRadius.circular(6),
-                                      ),
-                                      child: const Text(
-                                        "Putri",
-                                        style: TextStyle(fontSize: 10),
-                                      ),
-                                    )
-                                  ],
+                                Text(
+                                  "Kost Arsa IT",
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                                const SizedBox(height: 4),
-                                const Text(
+                                SizedBox(height: 4),
+                                Text(
                                   "Jl. Sampangan, Semarang Selatan",
                                   style: TextStyle(
-                                      fontSize: 12, color: Colors.grey),
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
                                 ),
-                                const SizedBox(height: 4),
-                                const Text(
+                                SizedBox(height: 4),
+                                Text(
                                   "Rp. 1.000.000",
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
@@ -247,7 +326,7 @@ class LaporanPage extends StatelessWidget {
                                 ),
                               ],
                             ),
-                          )
+                          ),
                         ],
                       ),
 
@@ -270,8 +349,7 @@ class LaporanPage extends StatelessWidget {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                        const AcceptKost(),
+                                    builder: (_) => const AcceptKost(),
                                   ),
                                 );
                               },
