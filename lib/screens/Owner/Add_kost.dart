@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,9 +39,13 @@ class _AddKostPageState extends State<AddKostPage> {
 
   int? selectedCityId;
 
-  List<String> selectedFeatures = [];
+  List<String> selectedKostFacilities = [];
+  List<String> selectedRoomFacilities = [];
 
-  final List<String> featureOptions = [
+  List<Map<String, TextEditingController>> kostRules = [];
+  List<Map<String, TextEditingController>> roomRules = [];
+
+  final List<String> kostFacilityOptions = [
     "WiFi",
     "CCTV",
     "Parkir Motor",
@@ -50,6 +55,9 @@ class _AddKostPageState extends State<AddKostPage> {
     "Ruang Tamu",
     "Keamanan 24 Jam",
     "Mushola",
+  ];
+
+  final List<String> roomFacilityOptions = [
     "AC",
     "TV",
     "Kasur",
@@ -63,7 +71,18 @@ class _AddKostPageState extends State<AddKostPage> {
   @override
   void initState() {
     super.initState();
+
     loadCities();
+
+    kostRules.add({
+      "title": TextEditingController(),
+      "desc": TextEditingController(),
+    });
+
+    roomRules.add({
+      "title": TextEditingController(),
+      "desc": TextEditingController(),
+    });
   }
 
   @override
@@ -78,12 +97,20 @@ class _AddKostPageState extends State<AddKostPage> {
     monthlyPriceController.dispose();
     yearlyPriceController.dispose();
 
+    for (final item in kostRules) {
+      item["title"]?.dispose();
+      item["desc"]?.dispose();
+    }
+
+    for (final item in roomRules) {
+      item["title"]?.dispose();
+      item["desc"]?.dispose();
+    }
+
     super.dispose();
   }
 
-  // =========================
   // LOAD CITIES
-  // =========================
 
   Future<void> loadCities() async {
     try {
@@ -131,17 +158,45 @@ class _AddKostPageState extends State<AddKostPage> {
     }
   }
 
-  // =========================
   // CLEAN PRICE
-  // =========================
 
   String cleanPrice(String value) {
     return value.replaceAll(RegExp(r'[^0-9]'), '');
   }
 
-  // =========================
+  // LIST TO DATABASE STRING
+
+  String selectedListToDatabaseString(List<String> values) {
+    return values
+        .map((item) {
+          return item
+              .toLowerCase()
+              .replaceAll(" ", "_")
+              .replaceAll(RegExp(r'[^a-z0-9_]'), '');
+        })
+        .where((item) => item.isNotEmpty)
+        .join(',');
+  }
+
+  // RULES TO DATABASE JSON STRING
+
+  List<Map<String, String>> buildRulesPayload(
+    List<Map<String, TextEditingController>> source,
+  ) {
+    return source
+        .map((item) {
+          return {
+            "title": item["title"]?.text.trim() ?? "",
+            "description": item["desc"]?.text.trim() ?? "",
+          };
+        })
+        .where((item) {
+          return item["title"]!.isNotEmpty || item["description"]!.isNotEmpty;
+        })
+        .toList();
+  }
+
   // PICK IMAGE
-  // =========================
 
   Future<void> pickImage() async {
     final pickedImages = await ImagePicker().pickMultiImage();
@@ -172,9 +227,7 @@ class _AddKostPageState extends State<AddKostPage> {
     });
   }
 
-  // =========================
   // CREATE KOST
-  // =========================
 
   Future<void> tambahKost() async {
     if (titleController.text.isEmpty ||
@@ -194,6 +247,14 @@ class _AddKostPageState extends State<AddKostPage> {
     try {
       final token = await ApiService().getToken();
 
+      final kostFacilitiesString = selectedListToDatabaseString(
+        selectedKostFacilities,
+      );
+
+      final roomFacilitiesString = selectedListToDatabaseString(
+        selectedRoomFacilities,
+      );
+
       final Map<String, String> body = {
         'title': titleController.text,
         'description': descController.text,
@@ -201,6 +262,11 @@ class _AddKostPageState extends State<AddKostPage> {
         'city_id': selectedCityId.toString(),
         'max_people': maxPeopleController.text,
         'status': 'active',
+
+        'kost_rules': jsonEncode(buildRulesPayload(kostRules)),
+        'room_rules': jsonEncode(buildRulesPayload(roomRules)),
+        'kost_facilities': kostFacilitiesString,
+        'room_facilities': roomFacilitiesString,
       };
 
       final nightlyPrice = cleanPrice(nightlyPriceController.text);
@@ -279,17 +345,6 @@ class _AddKostPageState extends State<AddKostPage> {
       print("UPLOAD STATUS:");
       print(uploadResponse.statusCode);
 
-      for (var feature in selectedFeatures) {
-        await http.post(
-          Uri.parse("${ApiService.baseUrl}/properties/$propertyId/features"),
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-          },
-          body: {"name": feature},
-        );
-      }
-
       showMessage("Kost berhasil dibuat", success: true);
 
       Navigator.pop(context);
@@ -314,9 +369,7 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
-  // =========================
   // NORMAL INPUT
-  // =========================
 
   Widget input(
     String label,
@@ -384,9 +437,7 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
-  // =========================
   // PRICE INPUT
-  // =========================
 
   Widget priceInput(
     String label,
@@ -395,8 +446,10 @@ class _AddKostPageState extends State<AddKostPage> {
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
+
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+
         children: [
           Text(
             label,
@@ -457,6 +510,8 @@ class _AddKostPageState extends State<AddKostPage> {
       ),
     );
   }
+
+  // SECTION CARD
 
   Widget sectionCard({
     required String title,
@@ -521,6 +576,8 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
+  // FEATURE CHIP
+
   Widget featureChip({
     required String feature,
     required bool selected,
@@ -552,6 +609,117 @@ class _AddKostPageState extends State<AddKostPage> {
       onSelected: onSelected,
     );
   }
+
+  // POLICY / RULE CARD
+
+  Widget policyCard(List<Map<String, TextEditingController>> list, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  "Aturan ${index + 1}",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+
+              if (list.length > 1)
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      list[index]["title"]?.dispose();
+                      list[index]["desc"]?.dispose();
+                      list.removeAt(index);
+                    });
+                  },
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          input(
+            "Judul Aturan",
+            list[index]["title"]!,
+            icon: Icons.rule_folder_outlined,
+            hint: "Contoh: Tamu wajib lapor",
+          ),
+
+          input(
+            "Deskripsi Aturan",
+            list[index]["desc"]!,
+            maxLines: 3,
+            hint: "Tulis detail aturan di sini...",
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildPolicySection({
+    required String title,
+    required IconData icon,
+    required List<Map<String, TextEditingController>> policies,
+  }) {
+    return sectionCard(
+      title: title,
+      icon: icon,
+      children: [
+        ...List.generate(policies.length, (index) {
+          return policyCard(policies, index);
+        }),
+
+        SizedBox(
+          width: double.infinity,
+          height: 46,
+
+          child: OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: primaryColor,
+              side: BorderSide(color: primaryColor),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+
+            onPressed: () {
+              setState(() {
+                policies.add({
+                  "title": TextEditingController(),
+                  "desc": TextEditingController(),
+                });
+              });
+            },
+
+            icon: const Icon(Icons.add),
+            label: Text(
+              title == "Aturan Kost"
+                  ? "Tambah Aturan Kost"
+                  : "Tambah Aturan Kamar",
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // IMAGE PICKER
 
   Widget buildImagePicker() {
     return GestureDetector(
@@ -744,6 +912,8 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
+  // HEADER
+
   Widget buildHeader() {
     return Container(
       width: double.infinity,
@@ -840,6 +1010,8 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
+  // CITY DROPDOWN
+
   Widget cityDropdown() {
     return DropdownSearch<Map<String, dynamic>>(
       items: cities,
@@ -895,6 +1067,8 @@ class _AddKostPageState extends State<AddKostPage> {
       },
     );
   }
+
+  // BUILD
 
   @override
   Widget build(BuildContext context) {
@@ -1026,23 +1200,22 @@ class _AddKostPageState extends State<AddKostPage> {
               ),
 
               sectionCard(
-                title: "Fasilitas",
-                icon: Icons.widgets_outlined,
+                title: "Fasilitas Kost",
+                icon: Icons.maps_home_work_outlined,
                 children: [
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-
-                    children: featureOptions.map((feature) {
+                    children: kostFacilityOptions.map((feature) {
                       return featureChip(
                         feature: feature,
-                        selected: selectedFeatures.contains(feature),
+                        selected: selectedKostFacilities.contains(feature),
                         onSelected: (v) {
                           setState(() {
                             if (v) {
-                              selectedFeatures.add(feature);
+                              selectedKostFacilities.add(feature);
                             } else {
-                              selectedFeatures.remove(feature);
+                              selectedKostFacilities.remove(feature);
                             }
                           });
                         },
@@ -1050,6 +1223,44 @@ class _AddKostPageState extends State<AddKostPage> {
                     }).toList(),
                   ),
                 ],
+              ),
+
+              sectionCard(
+                title: "Fasilitas Kamar",
+                icon: Icons.bed_outlined,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: roomFacilityOptions.map((feature) {
+                      return featureChip(
+                        feature: feature,
+                        selected: selectedRoomFacilities.contains(feature),
+                        onSelected: (v) {
+                          setState(() {
+                            if (v) {
+                              selectedRoomFacilities.add(feature);
+                            } else {
+                              selectedRoomFacilities.remove(feature);
+                            }
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+
+              buildPolicySection(
+                title: "Aturan Kost",
+                icon: Icons.rule_outlined,
+                policies: kostRules,
+              ),
+
+              buildPolicySection(
+                title: "Aturan Kamar",
+                icon: Icons.meeting_room_outlined,
+                policies: roomRules,
               ),
             ],
           ),
@@ -1125,9 +1336,7 @@ class _AddKostPageState extends State<AddKostPage> {
   }
 }
 
-// =========================
 // FORMATTER RUPIAH
-// =========================
 
 class RupiahInputFormatter extends TextInputFormatter {
   @override
