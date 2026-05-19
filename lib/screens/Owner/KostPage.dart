@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Owner/Add_kost.dart';
+import 'package:koskaki/screens/Owner/Detail_kost.dart';
 import 'package:koskaki/service/api_service.dart';
 
 class KostPage extends StatefulWidget {
@@ -69,6 +70,57 @@ class _KostPageState extends State<KostPage> {
   }
 
   // =========================
+  // GET IMAGE
+  // =========================
+
+  String getImage(
+      Map<String, dynamic> kost,
+      ) {
+    String thumbnail = "";
+
+    try {
+      // MAIN IMAGE
+      if (kost['main_image'] != null) {
+        final mainImage =
+        kost['main_image'];
+
+        if (mainImage is String) {
+          thumbnail = mainImage;
+        } else if (mainImage is Map) {
+          thumbnail =
+              mainImage['url']
+                  ?.toString() ??
+                  "";
+        }
+      }
+
+      // IMAGES
+      if (thumbnail.isEmpty &&
+          kost['images'] != null &&
+          kost['images'] is List &&
+          kost['images'].isNotEmpty) {
+        thumbnail =
+            kost['images'][0]['url']
+                ?.toString() ??
+                "";
+      }
+
+      // FIX URL
+      if (thumbnail.isNotEmpty &&
+          !thumbnail.startsWith(
+            "http",
+          )) {
+        thumbnail =
+        "https://koskaki-api.servermbud.online/storage/$thumbnail";
+      }
+    } catch (e) {
+      print("IMAGE ERROR: $e");
+    }
+
+    return thumbnail;
+  }
+
+  // =========================
   // GET KOST
   // =========================
 
@@ -81,6 +133,7 @@ class _KostPageState extends State<KostPage> {
         Uri.parse(
           "${ApiService.baseUrl}/my-properties",
         ),
+
         headers: {
           "Authorization":
           "Bearer $token",
@@ -160,16 +213,9 @@ class _KostPageState extends State<KostPage> {
           itemBuilder:
               (context, index) {
             final kost =
-            Map<String, dynamic>
-                .from(
+            Map<String, dynamic>.from(
               kostList[index],
             );
-
-            print(jsonEncode(kost));
-
-            // =========================
-            // DATA
-            // =========================
 
             final title =
                 kost['title'] ??
@@ -185,63 +231,27 @@ class _KostPageState extends State<KostPage> {
                     ?.toString() ??
                     "0";
 
-            // =========================
-            // IMAGE
-            // =========================
-
-            String thumbnail = "";
-
-            try {
-              if (kost[
-              'main_image'] !=
-                  null) {
-                final mainImage =
-                kost[
-                'main_image'];
-
-                if (mainImage
-                is String) {
-                  thumbnail =
-                      mainImage;
-                } else if (mainImage
-                is Map) {
-                  thumbnail =
-                      mainImage['url']
-                          ?.toString() ??
-                          "";
-                }
-              }
-
-              if (thumbnail
-                  .isEmpty &&
-                  kost['images'] !=
-                      null &&
-                  kost['images']
-                  is List &&
-                  kost['images']
-                      .isNotEmpty) {
-                thumbnail =
-                    kost['images'][0]
-                    ['url']
-                        ?.toString() ??
-                        "";
-              }
-              if (thumbnail.isNotEmpty &&
-                  !thumbnail.startsWith("http")) {
-                thumbnail =
-                "https://koskaki-api.servermbud.online/storage/$thumbnail";
-              }
-
-              print(thumbnail);
-            } catch (e) {
-              print(
-                "IMAGE ERROR: $e",
-              );
-            }
+            final thumbnail =
+            getImage(kost);
 
             return GestureDetector(
-              onTap: () {
-                // pindah detail
+              onTap: () async {
+                final result =
+                await Navigator.push(
+                  context,
+
+                  MaterialPageRoute(
+                    builder:
+                        (_) =>
+                        DetailKostPage(
+                          kost: kost,
+                        ),
+                  ),
+                );
+
+                if (result == true) {
+                  getKost();
+                }
               },
 
               child: Container(
@@ -294,6 +304,7 @@ class _KostPageState extends State<KostPage> {
                         Radius.circular(
                           20,
                         ),
+
                         topRight:
                         Radius.circular(
                           20,
@@ -331,7 +342,8 @@ class _KostPageState extends State<KostPage> {
                             200,
 
                             color:
-                            Colors.grey[200],
+                            Colors.grey[
+                            200],
 
                             child:
                             const Center(
@@ -356,15 +368,19 @@ class _KostPageState extends State<KostPage> {
                             200,
 
                             color:
-                            Colors.grey[300],
+                            Colors.grey[
+                            300],
 
                             child:
                             const Center(
                               child:
                               Icon(
-                                Icons.broken_image,
+                                Icons
+                                    .broken_image,
+
                                 size:
                                 60,
+
                                 color:
                                 Colors.grey,
                               ),
@@ -377,7 +393,8 @@ class _KostPageState extends State<KostPage> {
                         200,
 
                         color:
-                        Colors.grey[300],
+                        Colors.grey[
+                        300],
 
                         child:
                         const Center(
@@ -385,8 +402,10 @@ class _KostPageState extends State<KostPage> {
                           Icon(
                             Icons
                                 .image,
+
                             size:
                             60,
+
                             color:
                             Colors.grey,
                           ),
@@ -419,7 +438,8 @@ class _KostPageState extends State<KostPage> {
                               20,
 
                               fontWeight:
-                              FontWeight.bold,
+                              FontWeight
+                                  .bold,
                             ),
                           ),
 
@@ -436,7 +456,8 @@ class _KostPageState extends State<KostPage> {
                               18,
 
                               fontWeight:
-                              FontWeight.bold,
+                              FontWeight
+                                  .bold,
 
                               color:
                               Color(
@@ -456,6 +477,7 @@ class _KostPageState extends State<KostPage> {
                                 const EdgeInsets.symmetric(
                                   horizontal:
                                   12,
+
                                   vertical:
                                   6,
                                 ),
@@ -474,14 +496,15 @@ class _KostPageState extends State<KostPage> {
                                   ),
                                 ),
 
-                                child:
-                                Row(
+                                child: Row(
                                   children: [
                                     const Icon(
                                       Icons
                                           .people,
+
                                       size:
                                       18,
+
                                       color:
                                       Colors.green,
                                     ),
@@ -532,9 +555,11 @@ class _KostPageState extends State<KostPage> {
         onPressed: () async {
           await Navigator.push(
             context,
+
             MaterialPageRoute(
               builder:
-                  (_) => const AddKostPage(),
+                  (_) =>
+              const AddKostPage(),
             ),
           );
 
