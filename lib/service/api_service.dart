@@ -400,4 +400,61 @@ class ApiService {
       return null;
     }
   }
+  Future<List<dynamic>> getOwnerPropertiesWithMembers() async {
+    final token = await getToken();
+
+    if (token == null) {
+      print('TOKEN NULL');
+      return [];
+    }
+
+    final url = Uri.parse(
+      '$baseUrl/owner/properties-with-members',
+    );
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print(
+        'GET OWNER PROPERTIES STATUS: ${response.statusCode}',
+      );
+
+      print(
+        'GET OWNER PROPERTIES BODY: ${response.body}',
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data is List) {
+          return data;
+        }
+
+        if (data is Map<String, dynamic>) {
+          if (data['data'] != null &&
+              data['data'] is List) {
+            return data['data'];
+          }
+
+          if (data['properties'] != null &&
+              data['properties'] is List) {
+            return data['properties'];
+          }
+        }
+
+        return [];
+      }
+
+      return [];
+    } catch (e) {
+      print('ERROR GET OWNER PROPERTIES: $e');
+      return [];
+    }
+  }
 }
