@@ -110,8 +110,6 @@ class _AddKostPageState extends State<AddKostPage> {
     super.dispose();
   }
 
-  // LOAD CITIES
-
   Future<void> loadCities() async {
     try {
       final response = await http.get(
@@ -140,6 +138,8 @@ class _AddKostPageState extends State<AddKostPage> {
           cityData = decoded['data']['data'];
         }
 
+        if (!mounted) return;
+
         setState(() {
           cities = cityData.map<Map<String, dynamic>>((item) {
             return Map<String, dynamic>.from(item);
@@ -158,13 +158,9 @@ class _AddKostPageState extends State<AddKostPage> {
     }
   }
 
-  // CLEAN PRICE
-
   String cleanPrice(String value) {
     return value.replaceAll(RegExp(r'[^0-9]'), '');
   }
-
-  // LIST TO DATABASE STRING
 
   String selectedListToDatabaseString(List<String> values) {
     return values
@@ -177,8 +173,6 @@ class _AddKostPageState extends State<AddKostPage> {
         .where((item) => item.isNotEmpty)
         .join(',');
   }
-
-  // RULES TO DATABASE JSON STRING
 
   List<Map<String, String>> buildRulesPayload(
     List<Map<String, TextEditingController>> source,
@@ -195,8 +189,6 @@ class _AddKostPageState extends State<AddKostPage> {
         })
         .toList();
   }
-
-  // PICK IMAGE
 
   Future<void> pickImage() async {
     final pickedImages = await ImagePicker().pickMultiImage();
@@ -227,7 +219,139 @@ class _AddKostPageState extends State<AddKostPage> {
     });
   }
 
-  // CREATE KOST
+  // =========================
+  // UPLOAD FITUR KOST
+  // Masuk ke backend sebagai kost_features
+  // =========================
+
+  Future<void> uploadKostFeatures({
+    required String propertyId,
+    required String token,
+  }) async {
+    for (final feature in selectedKostFacilities) {
+      final response = await http.post(
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/kost-features"),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+        body: {'name': feature},
+      );
+
+      print("UPLOAD KOST FEATURE:");
+      print(feature);
+
+      print("UPLOAD KOST FEATURE STATUS:");
+      print(response.statusCode);
+
+      print("UPLOAD KOST FEATURE BODY:");
+      print(response.body);
+    }
+  }
+
+  // =========================
+  // UPLOAD FITUR KAMAR
+  // Masuk ke backend sebagai place_features
+  // =========================
+
+  Future<void> uploadRoomFeatures({
+    required String propertyId,
+    required String token,
+  }) async {
+    for (final feature in selectedRoomFacilities) {
+      final response = await http.post(
+        Uri.parse(
+          "${ApiService.baseUrl}/properties/$propertyId/place-features",
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+        body: {'name': feature},
+      );
+
+      print("UPLOAD ROOM FEATURE:");
+      print(feature);
+
+      print("UPLOAD ROOM FEATURE STATUS:");
+      print(response.statusCode);
+
+      print("UPLOAD ROOM FEATURE BODY:");
+      print(response.body);
+    }
+  }
+
+  // =========================
+  // UPLOAD ATURAN KOST
+  // Masuk ke backend sebagai kost_policies
+  // =========================
+
+  Future<void> uploadKostPolicies({
+    required String propertyId,
+    required String token,
+  }) async {
+    final rules = buildRulesPayload(kostRules);
+
+    for (final rule in rules) {
+      final response = await http.post(
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/kost-policies"),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+        body: {
+          'title': rule['title'] ?? '',
+          'description': rule['description'] ?? '',
+        },
+      );
+
+      print("UPLOAD KOST POLICY:");
+      print(rule);
+
+      print("UPLOAD KOST POLICY STATUS:");
+      print(response.statusCode);
+
+      print("UPLOAD KOST POLICY BODY:");
+      print(response.body);
+    }
+  }
+
+  // =========================
+  // UPLOAD ATURAN KAMAR
+  // Masuk ke backend sebagai place_policies
+  // =========================
+
+  Future<void> uploadRoomPolicies({
+    required String propertyId,
+    required String token,
+  }) async {
+    final rules = buildRulesPayload(roomRules);
+
+    for (final rule in rules) {
+      final response = await http.post(
+        Uri.parse(
+          "${ApiService.baseUrl}/properties/$propertyId/place-policies",
+        ),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+        body: {
+          'title': rule['title'] ?? '',
+          'description': rule['description'] ?? '',
+        },
+      );
+
+      print("UPLOAD ROOM POLICY:");
+      print(rule);
+
+      print("UPLOAD ROOM POLICY STATUS:");
+      print(response.statusCode);
+
+      print("UPLOAD ROOM POLICY BODY:");
+      print(response.body);
+    }
+  }
 
   Future<void> tambahKost() async {
     if (titleController.text.isEmpty ||
@@ -247,6 +371,18 @@ class _AddKostPageState extends State<AddKostPage> {
     try {
       final token = await ApiService().getToken();
 
+      if (token == null || token.isEmpty) {
+        showMessage("Token tidak ditemukan, silakan login ulang");
+
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+
+        return;
+      }
+
       final kostFacilitiesString = selectedListToDatabaseString(
         selectedKostFacilities,
       );
@@ -254,6 +390,10 @@ class _AddKostPageState extends State<AddKostPage> {
       final roomFacilitiesString = selectedListToDatabaseString(
         selectedRoomFacilities,
       );
+
+      final kostRulesJson = jsonEncode(buildRulesPayload(kostRules));
+
+      final roomRulesJson = jsonEncode(buildRulesPayload(roomRules));
 
       final Map<String, String> body = {
         'title': titleController.text,
@@ -263,10 +403,20 @@ class _AddKostPageState extends State<AddKostPage> {
         'max_people': maxPeopleController.text,
         'status': 'active',
 
-        'kost_rules': jsonEncode(buildRulesPayload(kostRules)),
-        'room_rules': jsonEncode(buildRulesPayload(roomRules)),
+        // Tetap dikirim juga di body utama sebagai cadangan
         'kost_facilities': kostFacilitiesString,
         'room_facilities': roomFacilitiesString,
+        'kost_rules': kostRulesJson,
+        'room_rules': roomRulesJson,
+
+        'property_features': kostFacilitiesString,
+        'place_features': roomFacilitiesString,
+        'property_policies': kostRulesJson,
+        'place_policies': roomRulesJson,
+
+        'feature': kostFacilitiesString,
+        'features': kostFacilitiesString,
+        'policies': kostRulesJson,
       };
 
       final nightlyPrice = cleanPrice(nightlyPriceController.text);
@@ -312,19 +462,38 @@ class _AddKostPageState extends State<AddKostPage> {
           createResponse.statusCode != 201) {
         showMessage("Gagal membuat kost");
 
-        setState(() {
-          isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
 
         return;
       }
 
-      Map<String, dynamic> decoded = jsonDecode(createResponse.body);
+      final Map<String, dynamic> decoded = jsonDecode(createResponse.body);
 
       final String propertyId = decoded['data']['id'].toString();
 
       print("PROPERTY ID:");
       print(propertyId);
+
+      // =========================
+      // PENTING:
+      // Upload fasilitas dan peraturan ke endpoint relasi
+      // =========================
+
+      await uploadKostFeatures(propertyId: propertyId, token: token);
+
+      await uploadRoomFeatures(propertyId: propertyId, token: token);
+
+      await uploadKostPolicies(propertyId: propertyId, token: token);
+
+      await uploadRoomPolicies(propertyId: propertyId, token: token);
+
+      // =========================
+      // UPLOAD IMAGE
+      // =========================
 
       var request = http.MultipartRequest(
         'POST',
@@ -342,23 +511,31 @@ class _AddKostPageState extends State<AddKostPage> {
 
       final uploadResponse = await request.send();
 
-      print("UPLOAD STATUS:");
+      print("UPLOAD IMAGE STATUS:");
       print(uploadResponse.statusCode);
 
       showMessage("Kost berhasil dibuat", success: true);
 
-      Navigator.pop(context);
+      if (mounted) {
+        Navigator.pop(context, true);
+      }
     } catch (e) {
+      print("ERROR TAMBAH KOST:");
       print(e);
+
       showMessage("Error: $e");
     }
 
-    setState(() {
-      isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   void showMessage(String msg, {bool success = false}) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
@@ -368,8 +545,6 @@ class _AddKostPageState extends State<AddKostPage> {
       ),
     );
   }
-
-  // NORMAL INPUT
 
   Widget input(
     String label,
@@ -381,10 +556,8 @@ class _AddKostPageState extends State<AddKostPage> {
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
           Text(
             label,
@@ -394,38 +567,30 @@ class _AddKostPageState extends State<AddKostPage> {
               fontSize: 14,
             ),
           ),
-
           const SizedBox(height: 8),
-
           TextField(
             controller: controller,
             keyboardType: type,
             maxLines: maxLines,
             decoration: InputDecoration(
               hintText: hint,
-
               prefixIcon: maxLines == 1
                   ? Icon(icon, color: primaryColor)
                   : null,
-
               filled: true,
               fillColor: const Color(0xFFF4F6FA),
-
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 16,
               ),
-
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: Colors.grey.shade200),
               ),
-
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: primaryColor, width: 1.5),
               ),
-
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide.none,
@@ -436,8 +601,6 @@ class _AddKostPageState extends State<AddKostPage> {
       ),
     );
   }
-
-  // PRICE INPUT
 
   Widget priceInput(
     String label,
@@ -446,10 +609,8 @@ class _AddKostPageState extends State<AddKostPage> {
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
           Text(
             label,
@@ -459,47 +620,35 @@ class _AddKostPageState extends State<AddKostPage> {
               fontSize: 14,
             ),
           ),
-
           const SizedBox(height: 8),
-
           TextField(
             controller: controller,
             keyboardType: TextInputType.number,
-
             inputFormatters: [RupiahInputFormatter()],
-
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-
             decoration: InputDecoration(
               hintText: "0",
-
               prefixIcon: Icon(icon, color: primaryColor, size: 20),
-
               prefixText: "Rp ",
               prefixStyle: TextStyle(
                 color: primaryColor,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
               ),
-
               filled: true,
               fillColor: const Color(0xFFF4F6FA),
-
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 8,
                 vertical: 16,
               ),
-
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: Colors.grey.shade200),
               ),
-
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: primaryColor, width: 1.5),
               ),
-
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide.none,
@@ -510,8 +659,6 @@ class _AddKostPageState extends State<AddKostPage> {
       ),
     );
   }
-
-  // SECTION CARD
 
   Widget sectionCard({
     required String title,
@@ -522,11 +669,9 @@ class _AddKostPageState extends State<AddKostPage> {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(18),
-
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(26),
-
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.06),
@@ -535,26 +680,20 @@ class _AddKostPageState extends State<AddKostPage> {
           ),
         ],
       ),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-
                 decoration: BoxDecoration(
                   color: softGreen,
                   borderRadius: BorderRadius.circular(14),
                 ),
-
                 child: Icon(icon, color: primaryColor, size: 22),
               ),
-
               const SizedBox(width: 12),
-
               Expanded(
                 child: Text(
                   title,
@@ -567,16 +706,12 @@ class _AddKostPageState extends State<AddKostPage> {
               ),
             ],
           ),
-
           const SizedBox(height: 18),
-
           ...children,
         ],
       ),
     );
   }
-
-  // FEATURE CHIP
 
   Widget featureChip({
     required String feature,
@@ -585,7 +720,6 @@ class _AddKostPageState extends State<AddKostPage> {
   }) {
     return FilterChip(
       selected: selected,
-
       label: Text(
         feature,
         style: TextStyle(
@@ -593,36 +727,27 @@ class _AddKostPageState extends State<AddKostPage> {
           fontWeight: FontWeight.w600,
         ),
       ),
-
       avatar: selected
           ? const Icon(Icons.check_circle, color: Colors.white, size: 18)
           : null,
-
       backgroundColor: const Color(0xFFF4F6FA),
       selectedColor: primaryColor,
       checkmarkColor: Colors.white,
-
       side: BorderSide(color: selected ? primaryColor : Colors.grey.shade200),
-
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-
       onSelected: onSelected,
     );
   }
-
-  // POLICY / RULE CARD
 
   Widget policyCard(List<Map<String, TextEditingController>> list, int index) {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
-
       decoration: BoxDecoration(
         color: const Color(0xFFF4F6FA),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.grey.shade200),
       ),
-
       child: Column(
         children: [
           Row(
@@ -636,7 +761,6 @@ class _AddKostPageState extends State<AddKostPage> {
                   ),
                 ),
               ),
-
               if (list.length > 1)
                 IconButton(
                   onPressed: () {
@@ -650,16 +774,13 @@ class _AddKostPageState extends State<AddKostPage> {
                 ),
             ],
           ),
-
           const SizedBox(height: 8),
-
           input(
             "Judul Aturan",
             list[index]["title"]!,
             icon: Icons.rule_folder_outlined,
             hint: "Contoh: Tamu wajib lapor",
           ),
-
           input(
             "Deskripsi Aturan",
             list[index]["desc"]!,
@@ -683,11 +804,9 @@ class _AddKostPageState extends State<AddKostPage> {
         ...List.generate(policies.length, (index) {
           return policyCard(policies, index);
         }),
-
         SizedBox(
           width: double.infinity,
           height: 46,
-
           child: OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               foregroundColor: primaryColor,
@@ -696,7 +815,6 @@ class _AddKostPageState extends State<AddKostPage> {
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-
             onPressed: () {
               setState(() {
                 policies.add({
@@ -705,7 +823,6 @@ class _AddKostPageState extends State<AddKostPage> {
                 });
               });
             },
-
             icon: const Icon(Icons.add),
             label: Text(
               title == "Aturan Kost"
@@ -719,16 +836,12 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
-  // IMAGE PICKER
-
   Widget buildImagePicker() {
     return GestureDetector(
       onTap: pickImage,
-
       child: Container(
         width: double.infinity,
         height: images.isEmpty ? 230 : 260,
-
         decoration: BoxDecoration(
           gradient: images.isEmpty
               ? LinearGradient(
@@ -737,11 +850,8 @@ class _AddKostPageState extends State<AddKostPage> {
                   end: Alignment.bottomRight,
                 )
               : null,
-
           color: images.isEmpty ? null : Colors.white,
-
           borderRadius: BorderRadius.circular(28),
-
           boxShadow: [
             BoxShadow(
               color: primaryColor.withOpacity(0.18),
@@ -750,30 +860,24 @@ class _AddKostPageState extends State<AddKostPage> {
             ),
           ],
         ),
-
         child: images.isEmpty
             ? Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-
                 children: [
                   Container(
                     height: 72,
                     width: 72,
-
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.16),
                       shape: BoxShape.circle,
                     ),
-
                     child: const Icon(
                       Icons.add_photo_alternate_outlined,
                       size: 38,
                       color: Colors.white,
                     ),
                   ),
-
                   const SizedBox(height: 16),
-
                   const Text(
                     "Tambah Foto Kost",
                     style: TextStyle(
@@ -782,9 +886,7 @@ class _AddKostPageState extends State<AddKostPage> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-
                   const SizedBox(height: 6),
-
                   Text(
                     "Upload maksimal 15 gambar",
                     style: TextStyle(
@@ -796,33 +898,26 @@ class _AddKostPageState extends State<AddKostPage> {
               )
             : Padding(
                 padding: const EdgeInsets.all(12),
-
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
-
                           decoration: BoxDecoration(
                             color: softGreen,
                             borderRadius: BorderRadius.circular(14),
                           ),
-
                           child: Icon(
                             Icons.photo_library_outlined,
                             color: primaryColor,
                           ),
                         ),
-
                         const SizedBox(width: 10),
-
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-
                             children: [
                               Text(
                                 "${images.length} Foto Dipilih",
@@ -832,7 +927,6 @@ class _AddKostPageState extends State<AddKostPage> {
                                   fontSize: 16,
                                 ),
                               ),
-
                               Text(
                                 "Ketuk area ini untuk tambah foto lagi",
                                 style: TextStyle(
@@ -845,9 +939,7 @@ class _AddKostPageState extends State<AddKostPage> {
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 12),
-
                     Expanded(
                       child: GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
@@ -858,13 +950,11 @@ class _AddKostPageState extends State<AddKostPage> {
                               crossAxisSpacing: 8,
                               mainAxisSpacing: 8,
                             ),
-
                         itemBuilder: (context, index) {
                           return Stack(
                             children: [
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
-
                                 child: Image.file(
                                   images[index],
                                   width: double.infinity,
@@ -872,26 +962,21 @@ class _AddKostPageState extends State<AddKostPage> {
                                   fit: BoxFit.cover,
                                 ),
                               ),
-
                               Positioned(
                                 top: 4,
                                 right: 4,
-
                                 child: GestureDetector(
                                   onTap: () {
                                     setState(() {
                                       images.removeAt(index);
                                     });
                                   },
-
                                   child: Container(
                                     padding: const EdgeInsets.all(4),
-
                                     decoration: const BoxDecoration(
                                       color: Colors.red,
                                       shape: BoxShape.circle,
                                     ),
-
                                     child: const Icon(
                                       Icons.close,
                                       color: Colors.white,
@@ -912,23 +997,18 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
-  // HEADER
-
   Widget buildHeader() {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(20),
-
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [primaryColor, const Color(0xFF18227A)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-
         borderRadius: BorderRadius.circular(28),
-
         boxShadow: [
           BoxShadow(
             color: primaryColor.withOpacity(0.25),
@@ -937,25 +1017,21 @@ class _AddKostPageState extends State<AddKostPage> {
           ),
         ],
       ),
-
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 6,
                   ),
-
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(30),
                   ),
-
                   child: const Text(
                     "Form Owner",
                     style: TextStyle(
@@ -965,9 +1041,7 @@ class _AddKostPageState extends State<AddKostPage> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 14),
-
                 const Text(
                   "Tambah Kost Baru",
                   style: TextStyle(
@@ -976,9 +1050,7 @@ class _AddKostPageState extends State<AddKostPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-
                 const SizedBox(height: 6),
-
                 Text(
                   "Lengkapi data kos agar mudah ditemukan penyewa.",
                   style: TextStyle(
@@ -989,16 +1061,13 @@ class _AddKostPageState extends State<AddKostPage> {
               ],
             ),
           ),
-
           Container(
             height: 68,
             width: 68,
-
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.15),
               borderRadius: BorderRadius.circular(22),
             ),
-
             child: const Icon(
               Icons.add_home_work_outlined,
               color: Colors.white,
@@ -1010,53 +1079,41 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
-  // CITY DROPDOWN
-
   Widget cityDropdown() {
     return DropdownSearch<Map<String, dynamic>>(
       items: cities,
-
       itemAsString: (item) {
         return item['name']?.toString() ?? "-";
       },
-
       compareFn: (item1, item2) {
         return item1['id'] == item2['id'];
       },
-
       popupProps: const PopupProps.modalBottomSheet(
         showSearchBox: true,
         searchFieldProps: TextFieldProps(
           decoration: InputDecoration(hintText: "Cari kota..."),
         ),
       ),
-
       dropdownDecoratorProps: DropDownDecoratorProps(
         dropdownSearchDecoration: InputDecoration(
           hintText: cities.isEmpty ? "Data kota belum tersedia" : "Pilih Kota",
-
           prefixIcon: Icon(Icons.location_city_outlined, color: primaryColor),
-
           filled: true,
           fillColor: const Color(0xFFF4F6FA),
-
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
             borderSide: BorderSide(color: Colors.grey.shade200),
           ),
-
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
             borderSide: BorderSide(color: primaryColor, width: 1.5),
           ),
-
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(18),
             borderSide: BorderSide.none,
           ),
         ),
       ),
-
       onChanged: (value) {
         setState(() {
           selectedCityId = value?['id'];
@@ -1068,29 +1125,23 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
-  // BUILD
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
-
       appBar: AppBar(
         backgroundColor: backgroundColor,
         elevation: 0,
         foregroundColor: primaryColor,
         centerTitle: true,
-
         title: Text(
           "Tambah Kost",
           style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
         ),
       ),
-
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-
           child: Column(
             children: [
               buildHeader(),
@@ -1109,21 +1160,18 @@ class _AddKostPageState extends State<AddKostPage> {
                     icon: Icons.apartment_outlined,
                     hint: "Contoh: Kost Melati Semarang",
                   ),
-
                   input(
                     "Deskripsi",
                     descController,
                     maxLines: 4,
                     hint: "Jelaskan kondisi, fasilitas, dan keunggulan kost...",
                   ),
-
                   input(
                     "Alamat",
                     addressController,
                     maxLines: 3,
                     hint: "Masukkan alamat lengkap kost...",
                   ),
-
                   Text(
                     "Pilih Kota",
                     style: TextStyle(
@@ -1132,13 +1180,9 @@ class _AddKostPageState extends State<AddKostPage> {
                       fontSize: 14,
                     ),
                   ),
-
                   const SizedBox(height: 8),
-
                   cityDropdown(),
-
                   const SizedBox(height: 16),
-
                   input(
                     "Max Orang",
                     maxPeopleController,
@@ -1162,9 +1206,7 @@ class _AddKostPageState extends State<AddKostPage> {
                           icon: Icons.nightlight_round,
                         ),
                       ),
-
                       const SizedBox(width: 12),
-
                       Expanded(
                         child: priceInput(
                           "Harga Minggu",
@@ -1174,7 +1216,6 @@ class _AddKostPageState extends State<AddKostPage> {
                       ),
                     ],
                   ),
-
                   Row(
                     children: [
                       Expanded(
@@ -1184,9 +1225,7 @@ class _AddKostPageState extends State<AddKostPage> {
                           icon: Icons.calendar_month_outlined,
                         ),
                       ),
-
                       const SizedBox(width: 12),
-
                       Expanded(
                         child: priceInput(
                           "Harga Tahun",
@@ -1266,13 +1305,10 @@ class _AddKostPageState extends State<AddKostPage> {
           ),
         ),
       ),
-
       bottomNavigationBar: Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-
         decoration: BoxDecoration(
           color: Colors.white,
-
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.08),
@@ -1281,30 +1317,24 @@ class _AddKostPageState extends State<AddKostPage> {
             ),
           ],
         ),
-
         child: SafeArea(
           child: SizedBox(
             height: 54,
             width: double.infinity,
-
             child: ElevatedButton(
               onPressed: isLoading ? null : tambahKost,
-
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,
                 disabledBackgroundColor: Colors.grey,
                 elevation: 0,
-
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
               ),
-
               child: isLoading
                   ? const SizedBox(
                       height: 24,
                       width: 24,
-
                       child: CircularProgressIndicator(
                         color: Colors.white,
                         strokeWidth: 2.5,
@@ -1312,12 +1342,9 @@ class _AddKostPageState extends State<AddKostPage> {
                     )
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-
                       children: [
                         Icon(Icons.save_alt_rounded, color: Colors.white),
-
                         SizedBox(width: 10),
-
                         Text(
                           "Simpan Kost",
                           style: TextStyle(
@@ -1335,8 +1362,6 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 }
-
-// FORMATTER RUPIAH
 
 class RupiahInputFormatter extends TextInputFormatter {
   @override
@@ -1378,8 +1403,4 @@ class RupiahInputFormatter extends TextInputFormatter {
 
     return buffer.toString().split('').reversed.join();
   }
-}
-
-List<dynamic> parseJsonData(String response) {
-  return jsonDecode(response);
 }
