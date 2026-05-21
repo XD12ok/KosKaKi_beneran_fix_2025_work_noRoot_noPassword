@@ -6,6 +6,7 @@ import 'package:koskaki/screens/Owner/ListChat.dart';
 import 'package:koskaki/screens/Resident/DetailKos_page.dart';
 import 'package:koskaki/screens/Resident/Profile.dart';
 import 'package:koskaki/screens/Resident/QrScan.dart';
+import 'package:koskaki/screens/Resident/SearchResult.dart';
 import 'package:koskaki/service/api_service.dart';
 
 const Color primaryColor = Color(0xFF2D2F8F);
@@ -31,7 +32,6 @@ class _HomePageState extends State<HomePage> {
   bool loadingKos = true;
 
   KosFilter selectedFilter = KosFilter.rekomendasi;
-  String searchKeyword = "";
 
   @override
   void initState() {
@@ -287,24 +287,10 @@ class _HomePageState extends State<HomePage> {
     return null;
   }
 
-  List<Map<String, dynamic>> get filteredKosList {
+  List<Map<String, dynamic>> get sortedKosList {
     List<Map<String, dynamic>> result = List<Map<String, dynamic>>.from(
       kosList,
     );
-
-    if (searchKeyword.trim().isNotEmpty) {
-      final keyword = searchKeyword.toLowerCase();
-
-      result = result.where((kos) {
-        final title = getKosTitle(kos).toLowerCase();
-        final address = getKosAddress(kos).toLowerCase();
-        final city = getKosCity(kos).toLowerCase();
-
-        return title.contains(keyword) ||
-            address.contains(keyword) ||
-            city.contains(keyword);
-      }).toList();
-    }
 
     if (selectedFilter == KosFilter.termurah) {
       result.sort((a, b) {
@@ -342,106 +328,15 @@ class _HomePageState extends State<HomePage> {
     await loadKosFromApi();
   }
 
-  void showSearchBottomSheet() {
-    final controller = TextEditingController(text: searchKeyword);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 18,
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: primaryColor.withOpacity(0.18),
-                  blurRadius: 28,
-                  offset: const Offset(0, 14),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: Colors.black12,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  "Cari Kos Impianmu",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: darkText,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: "Cari nama, alamat, atau kota",
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    filled: true,
-                    fillColor: softBlue,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  onSubmitted: (value) {
-                    setState(() {
-                      searchKeyword = value;
-                    });
-
-                    Navigator.pop(context);
-                  },
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        searchKeyword = controller.text;
-                      });
-
-                      Navigator.pop(context);
-                    },
-                    child: const Text(
-                      "Cari Sekarang",
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+  Future<void> openSearchPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SearchResultPage()),
     );
+
+    if (!mounted) return;
+
+    loadKosFromApi();
   }
 
   void showComingSoon(String feature) {
@@ -897,6 +792,7 @@ class _HomePageState extends State<HomePage> {
         );
       },
       child: Container(
+        clipBehavior: Clip.antiAlias,
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -914,25 +810,38 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
             Positioned(
-              right: -32,
-              top: -35,
+              right: -18,
+              top: -26,
               child: Container(
-                width: 130,
-                height: 130,
+                width: 125,
+                height: 125,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
+                  color: Colors.white.withOpacity(0.10),
                   shape: BoxShape.circle,
                 ),
               ),
             ),
             Positioned(
-              right: 42,
-              bottom: -42,
+              right: 38,
+              top: 18,
               child: Container(
-                width: 105,
-                height: 105,
+                width: 82,
+                height: 82,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.07),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+            Positioned(
+              left: -34,
+              bottom: -54,
+              child: Container(
+                width: 115,
+                height: 115,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.08),
                   shape: BoxShape.circle,
@@ -1024,7 +933,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 14),
                 GestureDetector(
-                  onTap: showSearchBottomSheet,
+                  onTap: openSearchPage,
                   child: Container(
                     height: 54,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1032,37 +941,26 @@ class _HomePageState extends State<HomePage> {
                       color: Colors.white.withOpacity(0.95),
                       borderRadius: BorderRadius.circular(22),
                     ),
-                    child: Row(
+                    child: const Row(
                       children: [
-                        const Icon(Icons.search_rounded, color: primaryColor),
-                        const SizedBox(width: 10),
+                        Icon(Icons.search_rounded, color: primaryColor),
+                        SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            searchKeyword.isEmpty
-                                ? "Cari kos, alamat, atau kota"
-                                : searchKeyword,
+                            "Cari kos, alamat, atau kota",
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: searchKeyword.isEmpty
-                                  ? Colors.black45
-                                  : darkText,
+                              color: Colors.black45,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                        if (searchKeyword.isNotEmpty)
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                searchKeyword = "";
-                              });
-                            },
-                            child: const Icon(
-                              Icons.close_rounded,
-                              color: Colors.black45,
-                            ),
-                          ),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          color: Colors.black38,
+                          size: 16,
+                        ),
                       ],
                     ),
                   ),
@@ -1300,7 +1198,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget buildKosGrid() {
-    final data = filteredKosList;
+    final data = sortedKosList;
 
     if (data.isEmpty) {
       return buildKosEmpty();
@@ -1309,7 +1207,7 @@ class _HomePageState extends State<HomePage> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 350),
       child: GridView.builder(
-        key: ValueKey("${selectedFilter.name}-$searchKeyword-${data.length}"),
+        key: ValueKey("${selectedFilter.name}-${data.length}"),
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         itemCount: data.length,
@@ -1412,7 +1310,7 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        "${filteredKosList.length} kos",
+                        "${sortedKosList.length} kos",
                         style: const TextStyle(
                           color: primaryColor,
                           fontWeight: FontWeight.w800,

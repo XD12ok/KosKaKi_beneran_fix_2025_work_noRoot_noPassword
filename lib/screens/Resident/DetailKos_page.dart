@@ -24,7 +24,6 @@ class _DetailKosPageState extends State<DetailKosPage> {
   int currentImageIndex = 0;
 
   final Color primaryColor = const Color(0xFF0A0E50);
-  final Color secondColor = const Color(0xFF2D2F8F);
   final Color softGreen = const Color(0xFFEAF5EB);
   final Color backgroundColor = const Color(0xFFF6F8FA);
 
@@ -239,13 +238,21 @@ class _DetailKosPageState extends State<DetailKosPage> {
     if (img is String) {
       url = img;
     } else if (img is Map) {
-      url =
-          img['url']?.toString() ??
-          img['image']?.toString() ??
-          img['path']?.toString() ??
-          img['image_path']?.toString() ??
-          img['file']?.toString() ??
-          "";
+      final fullImageUrl = img['full_image_url']?.toString() ?? "";
+
+      if (fullImageUrl.isNotEmpty &&
+          fullImageUrl.startsWith("http") &&
+          !fullImageUrl.endsWith("/storage")) {
+        url = fullImageUrl;
+      } else {
+        url =
+            img['url']?.toString() ??
+            img['image']?.toString() ??
+            img['path']?.toString() ??
+            img['image_path']?.toString() ??
+            img['file']?.toString() ??
+            "";
+      }
     }
 
     if (url.isEmpty || url == "null") return "";
@@ -270,7 +277,8 @@ class _DetailKosPageState extends State<DetailKosPage> {
       return value
           .map((e) {
             if (e is Map) {
-              return e['name']?.toString() ??
+              return e['feature']?.toString() ??
+                  e['name']?.toString() ??
                   e['title']?.toString() ??
                   e['label']?.toString() ??
                   "";
@@ -292,7 +300,8 @@ class _DetailKosPageState extends State<DetailKosPage> {
           return decoded
               .map((e) {
                 if (e is Map) {
-                  return e['name']?.toString() ??
+                  return e['feature']?.toString() ??
+                      e['name']?.toString() ??
                       e['title']?.toString() ??
                       e['label']?.toString() ??
                       "";
@@ -319,13 +328,51 @@ class _DetailKosPageState extends State<DetailKosPage> {
     if (value == null) return [];
 
     if (value is List) {
-      return value.map<Map<String, dynamic>>((e) {
-        if (e is Map) {
-          return Map<String, dynamic>.from(e);
-        }
+      return value
+          .map<Map<String, dynamic>>((e) {
+            if (e is Map) {
+              final map = Map<String, dynamic>.from(e);
 
-        return {"title": "Aturan", "description": e.toString()};
-      }).toList();
+              final title = map['title']?.toString() ?? "";
+              final description = map['description']?.toString() ?? "";
+              final desc = map['desc']?.toString() ?? "";
+              final policy = map['policy']?.toString() ?? "";
+              final name = map['name']?.toString() ?? "";
+
+              if (title.isEmpty && policy.isNotEmpty) {
+                map['title'] = "Aturan";
+              }
+
+              if (description.isEmpty && desc.isEmpty && policy.isNotEmpty) {
+                map['description'] = policy;
+              }
+
+              if (description.isEmpty &&
+                  desc.isEmpty &&
+                  policy.isEmpty &&
+                  name.isNotEmpty) {
+                map['description'] = name;
+              }
+
+              return map;
+            }
+
+            return {"title": "Aturan", "description": e.toString()};
+          })
+          .where((e) {
+            final title = e['title']?.toString() ?? "";
+            final description = e['description']?.toString() ?? "";
+            final desc = e['desc']?.toString() ?? "";
+            final policy = e['policy']?.toString() ?? "";
+            final name = e['name']?.toString() ?? "";
+
+            return title.isNotEmpty ||
+                description.isNotEmpty ||
+                desc.isNotEmpty ||
+                policy.isNotEmpty ||
+                name.isNotEmpty;
+          })
+          .toList();
     }
 
     if (value is String && value.trim().isNotEmpty && value != "null") {
@@ -333,13 +380,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
         final decoded = jsonDecode(value);
 
         if (decoded is List) {
-          return decoded.map<Map<String, dynamic>>((e) {
-            if (e is Map) {
-              return Map<String, dynamic>.from(e);
-            }
-
-            return {"title": "Aturan", "description": e.toString()};
-          }).toList();
+          return parsePolicyList(decoded);
         }
       } catch (_) {}
 
@@ -375,6 +416,184 @@ class _DetailKosPageState extends State<DetailKosPage> {
 
   int getRatingCount(dynamic value) {
     return int.tryParse(value?.toString() ?? "0") ?? 0;
+  }
+
+  IconData getFacilityIcon(String value) {
+    final text = value.toLowerCase();
+
+    if (text.contains("24") || text.contains("24 jam")) {
+      return Icons.watch_later_rounded;
+    }
+
+    if (text.contains("wifi")) {
+      return Icons.wifi_rounded;
+    }
+
+    if (text.contains("cctv")) {
+      return Icons.videocam_rounded;
+    }
+
+    if (text.contains("parkir motor")) {
+      return Icons.two_wheeler_rounded;
+    }
+
+    if (text.contains("parkir mobil")) {
+      return Icons.directions_car_rounded;
+    }
+
+    if (text.contains("parkir")) {
+      return Icons.local_parking_rounded;
+    }
+
+    if (text.contains("dapur")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("laundry")) {
+      return Icons.local_laundry_service_rounded;
+    }
+
+    if (text.contains("ruang tamu")) {
+      return Icons.weekend_rounded;
+    }
+
+    if (text.contains("keamanan")) {
+      return Icons.security_rounded;
+    }
+
+    if (text.contains("mushola")) {
+      return Icons.mosque_rounded;
+    }
+
+    if (text.contains("ac")) {
+      return Icons.ac_unit_rounded;
+    }
+
+    if (text.contains("tv")) {
+      return Icons.tv_rounded;
+    }
+
+    if (text.contains("kasur")) {
+      return Icons.bed_rounded;
+    }
+
+    if (text.contains("lemari")) {
+      return Icons.inventory_2_rounded;
+    }
+
+    if (text.contains("meja")) {
+      return Icons.table_restaurant_rounded;
+    }
+
+    if (text.contains("kursi")) {
+      return Icons.chair_rounded;
+    }
+
+    if (text.contains("kulkas")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("kamar mandi")) {
+      return Icons.bathtub_rounded;
+    }
+
+    return Icons.check_circle_outline_rounded;
+  }
+
+  IconData getPolicyIcon(
+    String title,
+    String description,
+    String sectionTitle,
+  ) {
+    final text = "$title $description $sectionTitle".toLowerCase();
+
+    if (text.contains("tamu") || text.contains("guest")) {
+      return Icons.groups_rounded;
+    }
+
+    if (text.contains("lapor") ||
+        text.contains("izin") ||
+        text.contains("identitas") ||
+        text.contains("ktp")) {
+      return Icons.assignment_ind_rounded;
+    }
+
+    if (text.contains("rokok") || text.contains("merokok")) {
+      return Icons.smoke_free_rounded;
+    }
+
+    if (text.contains("hewan") ||
+        text.contains("peliharaan") ||
+        text.contains("binatang")) {
+      return Icons.pets_rounded;
+    }
+
+    if (text.contains("bersih") ||
+        text.contains("kebersihan") ||
+        text.contains("sampah")) {
+      return Icons.cleaning_services_rounded;
+    }
+
+    if (text.contains("jam") ||
+        text.contains("malam") ||
+        text.contains("pulang") ||
+        text.contains("batas")) {
+      return Icons.schedule_rounded;
+    }
+
+    if (text.contains("bayar") ||
+        text.contains("pembayaran") ||
+        text.contains("uang") ||
+        text.contains("sewa")) {
+      return Icons.payments_rounded;
+    }
+
+    if (text.contains("parkir")) {
+      return Icons.local_parking_rounded;
+    }
+
+    if (text.contains("kunci")) {
+      return Icons.key_rounded;
+    }
+
+    if (text.contains("dapur")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("kamar mandi") || text.contains("mandi")) {
+      return Icons.bathtub_rounded;
+    }
+
+    if (text.contains("kamar")) {
+      return Icons.meeting_room_rounded;
+    }
+
+    if (text.contains("berisik") ||
+        text.contains("gaduh") ||
+        text.contains("musik") ||
+        text.contains("suara")) {
+      return Icons.volume_off_rounded;
+    }
+
+    if (text.contains("rusak") ||
+        text.contains("kerusakan") ||
+        text.contains("barang")) {
+      return Icons.build_circle_rounded;
+    }
+
+    if (text.contains("listrik")) {
+      return Icons.electrical_services_rounded;
+    }
+
+    if (text.contains("air")) {
+      return Icons.water_drop_rounded;
+    }
+
+    if (text.contains("kost") || text.contains("kos")) {
+      return Icons.rule_rounded;
+    }
+
+    return Icons.gavel_rounded;
   }
 
   void showRentSnack() {
@@ -495,7 +714,8 @@ class _DetailKosPageState extends State<DetailKosPage> {
     final ratingCount = getRatingCount(d['rating_count']);
 
     final kostFacilities = parseStringList(
-      d['kost_facilities'] ??
+      d['kost_features'] ??
+          d['kost_facilities'] ??
           d['property_features'] ??
           d['features'] ??
           d['feature'] ??
@@ -504,18 +724,21 @@ class _DetailKosPageState extends State<DetailKosPage> {
     );
 
     final roomFacilities = parseStringList(
-      d['room_facilities'] ?? d['place_features'],
+      d['place_features'] ?? d['room_facilities'] ?? d['place_facilities'],
     );
 
     final kostRules = parsePolicyList(
-      d['kost_rules'] ??
+      d['kost_policies'] ??
+          d['kost_rules'] ??
           d['property_policies'] ??
           d['policies'] ??
           d['rules'] ??
           d['rule'],
     );
 
-    final roomRules = parsePolicyList(d['room_rules'] ?? d['place_policies']);
+    final roomRules = parsePolicyList(
+      d['place_policies'] ?? d['room_rules'] ?? d['place_rules'],
+    );
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -544,6 +767,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     buildImageHeader(title: title, status: status),
+
                     const SizedBox(height: 20),
 
                     priceSection(),
@@ -631,7 +855,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 ),
               ),
             ),
+
             const SizedBox(width: 12),
+
             Expanded(
               child: SizedBox(
                 height: 52,
@@ -674,10 +900,19 @@ class _DetailKosPageState extends State<DetailKosPage> {
             text: "Harga belum ditambahkan",
           )
         else
-          Column(
-            children: prices.map((item) {
-              return priceItemCard(item);
-            }).toList(),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: prices.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.85,
+            ),
+            itemBuilder: (context, index) {
+              return priceItemCard(prices[index]);
+            },
           ),
       ],
     );
@@ -685,60 +920,71 @@ class _DetailKosPageState extends State<DetailKosPage> {
 
   Widget priceItemCard(_PriceItem item) {
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [softGreen, Colors.white],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: primaryColor.withOpacity(0.10)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: primaryColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(item.icon, color: Colors.white, size: 23),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(item.icon, color: Colors.white, size: 17),
+              ),
+
+              const SizedBox(width: 8),
+
+              Expanded(
+                child: Text(
                   item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Colors.grey.shade700,
                     fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    fontSize: 11,
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  item.price,
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+
+          const Spacer(),
+
+          Text(
+            item.price,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: primaryColor,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
             ),
           ),
+
+          const SizedBox(height: 2),
+
           Text(
             item.subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Colors.grey.shade600,
               fontWeight: FontWeight.w600,
-              fontSize: 12,
+              fontSize: 10,
             ),
           ),
         ],
@@ -778,7 +1024,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 value: title,
               ),
             ),
+
             const SizedBox(width: 10),
+
             Expanded(
               child: miniInfoCard(
                 icon: Icons.location_city_rounded,
@@ -788,7 +1036,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ],
         ),
+
         const SizedBox(height: 10),
+
         Row(
           children: [
             Expanded(
@@ -798,7 +1048,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 value: maxPeople.isEmpty ? "Belum ada" : "$maxPeople orang",
               ),
             ),
+
             const SizedBox(width: 10),
+
             Expanded(
               child: miniInfoCard(
                 icon: Icons.verified_rounded,
@@ -810,7 +1062,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ],
         ),
+
         const SizedBox(height: 10),
+
         Row(
           children: [
             Expanded(
@@ -820,7 +1074,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 value: ratingText,
               ),
             ),
+
             const SizedBox(width: 10),
+
             Expanded(
               child: miniInfoCard(
                 icon: Icons.sell_outlined,
@@ -830,7 +1086,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ],
         ),
+
         const SizedBox(height: 12),
+
         fullInfoCard(
           icon: Icons.location_on_outlined,
           title: "Alamat Lengkap",
@@ -856,7 +1114,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: primaryColor, size: 21),
+
           const Spacer(),
+
           Text(
             title,
             maxLines: 1,
@@ -867,7 +1127,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
               fontWeight: FontWeight.w600,
             ),
           ),
+
           const SizedBox(height: 3),
+
           Text(
             value,
             maxLines: 1,
@@ -899,7 +1161,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: primaryColor, size: 22),
+
           const SizedBox(width: 12),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -912,7 +1176,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+
                 const SizedBox(height: 4),
+
                 Text(
                   value,
                   style: const TextStyle(
@@ -1041,6 +1307,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                         },
                       ),
               ),
+
               Positioned.fill(
                 child: IgnorePointer(
                   child: Container(
@@ -1057,6 +1324,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                 ),
               ),
+
               Positioned(
                 top: 16,
                 left: 16,
@@ -1081,7 +1349,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                           color: Colors.white,
                           size: 15,
                         ),
+
                         const SizedBox(width: 5),
+
                         Text(
                           status.toLowerCase() == "active"
                               ? "Tersedia"
@@ -1097,6 +1367,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                 ),
               ),
+
               if (images.isNotEmpty)
                 Positioned(
                   top: 16,
@@ -1118,7 +1389,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                             size: 16,
                             color: primaryColor,
                           ),
+
                           const SizedBox(width: 5),
+
                           Text(
                             "${currentImageIndex + 1}/$imageCount",
                             style: TextStyle(
@@ -1132,6 +1405,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                     ),
                   ),
                 ),
+
               Positioned(
                 left: 18,
                 right: 18,
@@ -1150,6 +1424,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                 ),
               ),
+
               if (imageCount > 1)
                 Positioned(
                   left: 0,
@@ -1200,7 +1475,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 64, color: Colors.grey.shade500),
+
           const SizedBox(height: 10),
+
           Text(
             text,
             style: TextStyle(
@@ -1259,7 +1536,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                   child: Icon(icon, color: primaryColor, size: 22),
                 ),
+
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Text(
                     title,
@@ -1272,7 +1551,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 ),
               ],
             ),
+
             const SizedBox(height: 18),
+
             ...children,
           ],
         ),
@@ -1295,27 +1576,61 @@ class _DetailKosPageState extends State<DetailKosPage> {
             text: "$title belum ditambahkan",
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: items.map((item) {
-              return Chip(
-                backgroundColor: softGreen,
-                side: BorderSide.none,
-                avatar: Icon(
-                  Icons.check_circle_outline,
-                  color: primaryColor,
-                  size: 18,
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.82,
+            ),
+            itemBuilder: (context, index) {
+              final item = normalizeText(items[index]);
+
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F6FA),
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.grey.shade200),
                 ),
-                label: Text(
-                  normalizeText(item),
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      height: 34,
+                      width: 34,
+                      decoration: BoxDecoration(
+                        color: softGreen,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        getFacilityIcon(item),
+                        color: primaryColor,
+                        size: 18,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      item,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: primaryColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        height: 1.15,
+                      ),
+                    ),
+                  ],
                 ),
               );
-            }).toList(),
+            },
           ),
       ],
     );
@@ -1338,12 +1653,19 @@ class _DetailKosPageState extends State<DetailKosPage> {
         else
           Column(
             children: policies.map((policy) {
-              final policyTitle = policy['title']?.toString() ?? "";
+              final policyTitle =
+                  policy['title']?.toString() ??
+                  policy['policy']?.toString() ??
+                  "";
+
               final policyDesc =
                   policy['description']?.toString() ??
                   policy['desc']?.toString() ??
                   policy['name']?.toString() ??
+                  policy['policy']?.toString() ??
                   "";
+
+              final policyIcon = getPolicyIcon(policyTitle, policyDesc, title);
 
               return Container(
                 width: double.infinity,
@@ -1352,16 +1674,23 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF4F6FA),
                   borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.grey.shade200),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.check_circle_outline,
-                      color: primaryColor,
-                      size: 22,
+                    Container(
+                      height: 44,
+                      width: 44,
+                      decoration: BoxDecoration(
+                        color: softGreen,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(policyIcon, color: primaryColor, size: 23),
                     ),
+
                     const SizedBox(width: 12),
+
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1375,7 +1704,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
                               fontSize: 14,
                             ),
                           ),
+
                           const SizedBox(height: 5),
+
                           Text(
                             policyDesc.isEmpty
                                 ? "Deskripsi aturan belum ditambahkan"
@@ -1409,7 +1740,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
       child: Row(
         children: [
           Icon(icon, color: Colors.grey.shade500),
+
           const SizedBox(width: 10),
+
           Expanded(
             child: Text(
               text,
@@ -1444,18 +1777,24 @@ class _DetailKosPageState extends State<DetailKosPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+
             const SizedBox(height: 14),
+
             const Text(
               "Data tidak ditemukan",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
+
             const SizedBox(height: 8),
+
             Text(
               "Detail kos belum bisa dimuat. Coba refresh halaman ini.",
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade600, height: 1.4),
             ),
+
             const SizedBox(height: 18),
+
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,

@@ -33,8 +33,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
     getDetail();
   }
 
-  // GET DETAIL
-
   Future<void> getDetail() async {
     try {
       final token = await ApiService().getToken();
@@ -60,6 +58,8 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
         final data = decoded['data'] ?? decoded;
 
+        if (!mounted) return;
+
         setState(() {
           detail = Map<String, dynamic>.from(data);
 
@@ -72,6 +72,8 @@ class _DetailKostPageState extends State<DetailKostPage> {
           isLoading = false;
         });
       } else {
+        if (!mounted) return;
+
         setState(() {
           detail = null;
           images = [];
@@ -83,6 +85,8 @@ class _DetailKostPageState extends State<DetailKostPage> {
       print("GET DETAIL ERROR:");
       print(e);
 
+      if (!mounted) return;
+
       setState(() {
         detail = null;
         images = [];
@@ -91,8 +95,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
       });
     }
   }
-
-  // FORMAT RUPIAH
 
   String formatRupiah(dynamic value) {
     if (value == null) return "";
@@ -117,8 +119,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
     return buffer.toString().split('').reversed.join();
   }
-
-  // PRICE
 
   String getPrice() {
     final d = detail ?? {};
@@ -146,8 +146,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
     return "Harga belum ditambahkan";
   }
-
-  // DELETE
 
   Future<void> deleteKost() async {
     try {
@@ -179,6 +177,8 @@ class _DetailKostPageState extends State<DetailKostPage> {
   }
 
   void showMessage(String message, {bool success = false}) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -188,8 +188,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
       ),
     );
   }
-
-  // EDIT NAVIGATION
 
   void goEdit() {
     if (detail == null) return;
@@ -204,15 +202,22 @@ class _DetailKostPageState extends State<DetailKostPage> {
     });
   }
 
-  // IMAGE FIX
-
   String fixUrl(dynamic img) {
     String url = "";
 
     if (img is String) {
       url = img;
     } else if (img is Map) {
-      url = img['url']?.toString() ?? "";
+      final fullImageUrl = img['full_image_url']?.toString() ?? "";
+      final normalUrl = img['url']?.toString() ?? "";
+
+      if (fullImageUrl.isNotEmpty &&
+          fullImageUrl.startsWith("http") &&
+          !fullImageUrl.endsWith("/storage")) {
+        url = fullImageUrl;
+      } else {
+        url = normalUrl;
+      }
     }
 
     if (url.isNotEmpty && !url.startsWith("http")) {
@@ -222,8 +227,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
     return url;
   }
 
-  // PARSE STRING LIST
-
   List<String> parseStringList(dynamic value) {
     if (value == null) return [];
 
@@ -231,7 +234,10 @@ class _DetailKostPageState extends State<DetailKostPage> {
       return value
           .map((e) {
             if (e is Map) {
-              return e['name']?.toString() ?? "";
+              return e['feature']?.toString() ??
+                  e['name']?.toString() ??
+                  e['title']?.toString() ??
+                  "";
             }
 
             return e.toString();
@@ -247,7 +253,19 @@ class _DetailKostPageState extends State<DetailKostPage> {
         final decoded = jsonDecode(value);
 
         if (decoded is List) {
-          return decoded.map((e) => e.toString()).toList();
+          return decoded
+              .map((e) {
+                if (e is Map) {
+                  return e['feature']?.toString() ??
+                      e['name']?.toString() ??
+                      e['title']?.toString() ??
+                      "";
+                }
+
+                return e.toString();
+              })
+              .where((e) => e.trim().isNotEmpty)
+              .toList();
         }
       } catch (_) {}
 
@@ -261,15 +279,45 @@ class _DetailKostPageState extends State<DetailKostPage> {
     return [];
   }
 
-  // PARSE POLICY LIST
-
   List<Map<String, dynamic>> parsePolicyList(dynamic value) {
     if (value == null) return [];
 
     if (value is List) {
-      return value.map<Map<String, dynamic>>((e) {
-        return Map<String, dynamic>.from(e);
-      }).toList();
+      return value
+          .map<Map<String, dynamic>>((e) {
+            if (e is Map) {
+              final map = Map<String, dynamic>.from(e);
+
+              final title = map['title']?.toString() ?? "";
+              final description = map['description']?.toString() ?? "";
+              final desc = map['desc']?.toString() ?? "";
+              final policy = map['policy']?.toString() ?? "";
+
+              if (title.isEmpty && policy.isNotEmpty) {
+                map['title'] = "Aturan";
+              }
+
+              if (description.isEmpty && desc.isEmpty && policy.isNotEmpty) {
+                map['description'] = policy;
+              }
+
+              return map;
+            }
+
+            return {"title": "Aturan", "description": e.toString()};
+          })
+          .where((e) {
+            final title = e['title']?.toString() ?? "";
+            final description = e['description']?.toString() ?? "";
+            final desc = e['desc']?.toString() ?? "";
+            final policy = e['policy']?.toString() ?? "";
+
+            return title.isNotEmpty ||
+                description.isNotEmpty ||
+                desc.isNotEmpty ||
+                policy.isNotEmpty;
+          })
+          .toList();
     }
 
     if (value is String && value.trim().isNotEmpty) {
@@ -277,11 +325,13 @@ class _DetailKostPageState extends State<DetailKostPage> {
         final decoded = jsonDecode(value);
 
         if (decoded is List) {
-          return decoded.map<Map<String, dynamic>>((e) {
-            return Map<String, dynamic>.from(e);
-          }).toList();
+          return parsePolicyList(decoded);
         }
       } catch (_) {}
+
+      return [
+        {"title": "Aturan", "description": value},
+      ];
     }
 
     return [];
@@ -300,9 +350,183 @@ class _DetailKostPageState extends State<DetailKostPage> {
         .join(" ");
   }
 
-  // =========================
-  // BUILD
-  // =========================
+  IconData getFacilityIcon(String value) {
+    final text = value.toLowerCase();
+
+    if (text.contains("24") || text.contains("24 jam")) {
+      return Icons.watch_later_rounded;
+    }
+
+    if (text.contains("wifi")) {
+      return Icons.wifi_rounded;
+    }
+
+    if (text.contains("cctv")) {
+      return Icons.videocam_rounded;
+    }
+
+    if (text.contains("parkir motor")) {
+      return Icons.two_wheeler_rounded;
+    }
+
+    if (text.contains("parkir mobil")) {
+      return Icons.directions_car_rounded;
+    }
+
+    if (text.contains("parkir")) {
+      return Icons.local_parking_rounded;
+    }
+
+    if (text.contains("dapur")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("laundry")) {
+      return Icons.local_laundry_service_rounded;
+    }
+
+    if (text.contains("ruang tamu")) {
+      return Icons.weekend_rounded;
+    }
+
+    if (text.contains("keamanan")) {
+      return Icons.security_rounded;
+    }
+
+    if (text.contains("mushola")) {
+      return Icons.mosque_rounded;
+    }
+
+    if (text.contains("ac")) {
+      return Icons.ac_unit_rounded;
+    }
+
+    if (text.contains("tv")) {
+      return Icons.tv_rounded;
+    }
+
+    if (text.contains("kasur")) {
+      return Icons.bed_rounded;
+    }
+
+    if (text.contains("lemari")) {
+      return Icons.inventory_2_rounded;
+    }
+
+    if (text.contains("meja")) {
+      return Icons.table_restaurant_rounded;
+    }
+
+    if (text.contains("kursi")) {
+      return Icons.chair_rounded;
+    }
+
+    if (text.contains("kulkas")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("kamar mandi")) {
+      return Icons.bathtub_rounded;
+    }
+
+    return Icons.check_circle_outline_rounded;
+  }
+
+  IconData getPolicyIcon(
+    String title,
+    String description,
+    String sectionTitle,
+  ) {
+    final text = "$title $description $sectionTitle".toLowerCase();
+
+    if (text.contains("tamu") || text.contains("guest")) {
+      return Icons.groups_rounded;
+    }
+
+    if (text.contains("lapor") ||
+        text.contains("izin") ||
+        text.contains("identitas") ||
+        text.contains("ktp")) {
+      return Icons.assignment_ind_rounded;
+    }
+
+    if (text.contains("rokok") || text.contains("merokok")) {
+      return Icons.smoke_free_rounded;
+    }
+
+    if (text.contains("hewan") ||
+        text.contains("peliharaan") ||
+        text.contains("binatang")) {
+      return Icons.pets_rounded;
+    }
+
+    if (text.contains("bersih") ||
+        text.contains("kebersihan") ||
+        text.contains("sampah")) {
+      return Icons.cleaning_services_rounded;
+    }
+
+    if (text.contains("jam") ||
+        text.contains("malam") ||
+        text.contains("pulang") ||
+        text.contains("batas")) {
+      return Icons.schedule_rounded;
+    }
+
+    if (text.contains("bayar") ||
+        text.contains("pembayaran") ||
+        text.contains("uang") ||
+        text.contains("sewa")) {
+      return Icons.payments_rounded;
+    }
+
+    if (text.contains("parkir")) {
+      return Icons.local_parking_rounded;
+    }
+
+    if (text.contains("kunci")) {
+      return Icons.key_rounded;
+    }
+
+    if (text.contains("dapur")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("kamar mandi") || text.contains("mandi")) {
+      return Icons.bathtub_rounded;
+    }
+
+    if (text.contains("kamar")) {
+      return Icons.meeting_room_rounded;
+    }
+
+    if (text.contains("berisik") ||
+        text.contains("gaduh") ||
+        text.contains("musik") ||
+        text.contains("suara")) {
+      return Icons.volume_off_rounded;
+    }
+
+    if (text.contains("rusak") ||
+        text.contains("kerusakan") ||
+        text.contains("barang")) {
+      return Icons.build_circle_rounded;
+    }
+
+    if (text.contains("listrik")) {
+      return Icons.electrical_services_rounded;
+    }
+
+    if (text.contains("air")) {
+      return Icons.water_drop_rounded;
+    }
+
+    if (text.contains("kost")) {
+      return Icons.rule_rounded;
+    }
+
+    return Icons.gavel_rounded;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -315,18 +539,20 @@ class _DetailKostPageState extends State<DetailKostPage> {
     final status = d['status']?.toString() ?? "active";
 
     final kostFacilities = parseStringList(
-      d['kost_facilities'] ?? d['property_features'] ?? d['features'],
+      d['kost_features'] ?? d['kost_facilities'] ?? d['property_features'],
     );
 
     final roomFacilities = parseStringList(
-      d['room_facilities'] ?? d['place_features'],
+      d['place_features'] ?? d['room_facilities'] ?? d['features'],
     );
 
     final kostRules = parsePolicyList(
-      d['kost_rules'] ?? d['property_policies'] ?? d['policies'],
+      d['kost_policies'] ?? d['kost_rules'] ?? d['property_policies'],
     );
 
-    final roomRules = parsePolicyList(d['room_rules'] ?? d['place_policies']);
+    final roomRules = parsePolicyList(
+      d['place_policies'] ?? d['room_rules'] ?? d['policies'],
+    );
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -532,8 +758,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
             ),
     );
   }
-
-  // IMAGE HEADER CAROUSEL
 
   Widget _buildImageHeader({required String title, required String status}) {
     final int imageCount = images.length > 15 ? 15 : images.length;
@@ -780,10 +1004,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
     );
   }
 
-  // =========================
-  // SECTION CARD
-  // =========================
-
   Widget _sectionCard({
     required String title,
     required IconData icon,
@@ -913,22 +1133,61 @@ class _DetailKostPageState extends State<DetailKostPage> {
             text: "$title belum ditambahkan",
           )
         else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: items.map((item) {
-              return Chip(
-                backgroundColor: softGreen,
-                side: BorderSide.none,
-                label: Text(
-                  normalizeText(item),
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 0.95,
+            ),
+            itemBuilder: (context, index) {
+              final item = normalizeText(items[index]);
+
+              return Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4F6FA),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      height: 44,
+                      width: 44,
+                      decoration: BoxDecoration(
+                        color: softGreen,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        getFacilityIcon(item),
+                        color: primaryColor,
+                        size: 23,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Text(
+                      item,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: primaryColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
                 ),
               );
-            }).toList(),
+            },
           ),
       ],
     );
@@ -951,11 +1210,18 @@ class _DetailKostPageState extends State<DetailKostPage> {
         else
           Column(
             children: policies.map((policy) {
-              final policyTitle = policy['title']?.toString() ?? "";
+              final policyTitle =
+                  policy['title']?.toString() ??
+                  policy['policy']?.toString() ??
+                  "";
+
               final policyDesc =
                   policy['description']?.toString() ??
                   policy['desc']?.toString() ??
+                  policy['policy']?.toString() ??
                   "";
+
+              final policyIcon = getPolicyIcon(policyTitle, policyDesc, title);
 
               return Container(
                 width: double.infinity,
@@ -964,14 +1230,19 @@ class _DetailKostPageState extends State<DetailKostPage> {
                 decoration: BoxDecoration(
                   color: const Color(0xFFF4F6FA),
                   borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.grey.shade200),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.check_circle_outline,
-                      color: primaryColor,
-                      size: 22,
+                    Container(
+                      height: 44,
+                      width: 44,
+                      decoration: BoxDecoration(
+                        color: softGreen,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(policyIcon, color: primaryColor, size: 23),
                     ),
 
                     const SizedBox(width: 12),

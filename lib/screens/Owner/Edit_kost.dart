@@ -31,35 +31,46 @@ class _EditKostPageState extends State<EditKostPage> {
   late TextEditingController monthC;
   late TextEditingController yearC;
 
-  List<String> propertyFeatures = [];
-  List<String> placeFeatures = [];
+  List<String> kostFeatures = [];
+  List<String> roomFeatures = [];
 
-  List<String> customPropertyFeatures = [];
-  List<String> customPlaceFeatures = [];
+  List<String> customKostFeatures = [];
+  List<String> customRoomFeatures = [];
 
-  final List<String> propertyFeatureOptions = [
+  List<String> originalKostFeatures = [];
+  List<String> originalRoomFeatures = [];
+
+  List<Map<String, dynamic>> originalKostFeatureObjects = [];
+  List<Map<String, dynamic>> originalRoomFeatureObjects = [];
+
+  List<Map<String, dynamic>> kostPolicies = [];
+  List<Map<String, dynamic>> roomPolicies = [];
+
+  List<Map<String, dynamic>> originalKostPolicyObjects = [];
+  List<Map<String, dynamic>> originalRoomPolicyObjects = [];
+
+  final List<String> kostFeatureOptions = [
     "WiFi",
     "CCTV",
-    "Parkir",
+    "Parkir Motor",
+    "Parkir Mobil",
+    "Dapur Bersama",
     "Laundry",
-    "Dapur",
     "Ruang Tamu",
     "Keamanan 24 Jam",
     "Mushola",
   ];
 
-  final List<String> placeFeatureOptions = [
+  final List<String> roomFeatureOptions = [
     "AC",
     "TV",
     "Kasur",
     "Lemari",
     "Meja",
     "Kursi",
+    "Kulkas",
     "Kamar Mandi Dalam",
   ];
-
-  List<Map<String, TextEditingController>> propertyPolicies = [];
-  List<Map<String, TextEditingController>> placePolicies = [];
 
   @override
   void initState() {
@@ -91,48 +102,63 @@ class _EditKostPageState extends State<EditKostPage> {
       text: formatNumber(k['price_perYear'] ?? k['price_per_year']),
     );
 
-    propertyFeatures = _parseStringList(
-      k['property_features'] ?? k['kost_facilities'],
+    originalKostFeatureObjects = _parseObjectList(
+      k['kost_features'] ?? k['kost_facilities'] ?? k['property_features'],
     );
 
-    placeFeatures = _parseStringList(
-      k['place_features'] ?? k['room_facilities'],
+    originalRoomFeatureObjects = _parseObjectList(
+      k['place_features'] ?? k['room_facilities'] ?? k['features'],
     );
 
-    final propPol = _parsePolicyList(k['property_policies'] ?? k['kost_rules']);
+    kostFeatures = _parseStringList(
+      k['kost_features'] ?? k['kost_facilities'] ?? k['property_features'],
+    );
 
-    final placePol = _parsePolicyList(k['place_policies'] ?? k['room_rules']);
+    roomFeatures = _parseStringList(
+      k['place_features'] ?? k['room_facilities'] ?? k['features'],
+    );
 
-    propertyPolicies = propPol.map((e) {
-      return {
-        "title": TextEditingController(text: e['title']?.toString() ?? ''),
-        "desc": TextEditingController(
-          text: e['description']?.toString() ?? e['desc']?.toString() ?? '',
-        ),
-      };
+    originalKostFeatures = List<String>.from(kostFeatures);
+    originalRoomFeatures = List<String>.from(roomFeatures);
+
+    customKostFeatures = kostFeatures
+        .where((item) => !kostFeatureOptions.contains(item))
+        .toList();
+
+    customRoomFeatures = roomFeatures
+        .where((item) => !roomFeatureOptions.contains(item))
+        .toList();
+
+    final rawKostPolicies = _parsePolicyList(
+      k['kost_policies'] ?? k['kost_rules'] ?? k['property_policies'],
+    );
+
+    final rawRoomPolicies = _parsePolicyList(
+      k['place_policies'] ?? k['room_rules'] ?? k['policies'],
+    );
+
+    originalKostPolicyObjects = List<Map<String, dynamic>>.from(
+      rawKostPolicies,
+    );
+
+    originalRoomPolicyObjects = List<Map<String, dynamic>>.from(
+      rawRoomPolicies,
+    );
+
+    kostPolicies = rawKostPolicies.map((item) {
+      return _policyToControllerMap(item);
     }).toList();
 
-    placePolicies = placePol.map((e) {
-      return {
-        "title": TextEditingController(text: e['title']?.toString() ?? ''),
-        "desc": TextEditingController(
-          text: e['description']?.toString() ?? e['desc']?.toString() ?? '',
-        ),
-      };
+    roomPolicies = rawRoomPolicies.map((item) {
+      return _policyToControllerMap(item);
     }).toList();
 
-    if (propertyPolicies.isEmpty) {
-      propertyPolicies.add({
-        "title": TextEditingController(),
-        "desc": TextEditingController(),
-      });
+    if (kostPolicies.isEmpty) {
+      kostPolicies.add(_emptyPolicyControllerMap());
     }
 
-    if (placePolicies.isEmpty) {
-      placePolicies.add({
-        "title": TextEditingController(),
-        "desc": TextEditingController(),
-      });
+    if (roomPolicies.isEmpty) {
+      roomPolicies.add(_emptyPolicyControllerMap());
     }
   }
 
@@ -148,31 +174,28 @@ class _EditKostPageState extends State<EditKostPage> {
     monthC.dispose();
     yearC.dispose();
 
-    for (final item in propertyPolicies) {
-      item["title"]?.dispose();
-      item["desc"]?.dispose();
+    for (final item in kostPolicies) {
+      (item["titleC"] as TextEditingController?)?.dispose();
+      (item["descC"] as TextEditingController?)?.dispose();
     }
 
-    for (final item in placePolicies) {
-      item["title"]?.dispose();
-      item["desc"]?.dispose();
+    for (final item in roomPolicies) {
+      (item["titleC"] as TextEditingController?)?.dispose();
+      (item["descC"] as TextEditingController?)?.dispose();
     }
 
     super.dispose();
   }
 
-  // FORMAT PRICE FOR INITIAL VALUE
+
+  // FORMAT PRICE
 
   String formatNumber(dynamic value) {
-    if (value == null) {
-      return "";
-    }
+    if (value == null) return "";
 
     String number = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
 
-    if (number.isEmpty) {
-      return "";
-    }
+    if (number.isEmpty) return "";
 
     final buffer = StringBuffer();
 
@@ -195,65 +218,18 @@ class _EditKostPageState extends State<EditKostPage> {
     return value.replaceAll(RegExp(r'[^0-9]'), '');
   }
 
-  // PARSE HELPERS
+  // PARSER
 
-  List<String> _parseStringList(dynamic value) {
-    if (value == null) {
-      return [];
-    }
-
-    if (value is List) {
-      return value
-          .map((e) {
-            if (e is Map) {
-              return e['name']?.toString() ?? "";
-            }
-
-            return e.toString();
-          })
-          .where((e) {
-            return e.trim().isNotEmpty;
-          })
-          .toList();
-    }
-
-    if (value is String) {
-      if (value.trim().isEmpty) {
-        return [];
-      }
-
-      try {
-        final decoded = jsonDecode(value);
-
-        if (decoded is List) {
-          return decoded.map((e) {
-            return e.toString();
-          }).toList();
-        }
-      } catch (_) {}
-
-      return value
-          .split(',')
-          .map((e) {
-            return e.trim();
-          })
-          .where((e) {
-            return e.isNotEmpty;
-          })
-          .toList();
-    }
-
-    return [];
-  }
-
-  List<Map<String, dynamic>> _parsePolicyList(dynamic value) {
-    if (value == null) {
-      return [];
-    }
+  List<Map<String, dynamic>> _parseObjectList(dynamic value) {
+    if (value == null) return [];
 
     if (value is List) {
       return value.map<Map<String, dynamic>>((e) {
-        return Map<String, dynamic>.from(e);
+        if (e is Map) {
+          return Map<String, dynamic>.from(e);
+        }
+
+        return {"feature": e.toString()};
       }).toList();
     }
 
@@ -262,9 +238,97 @@ class _EditKostPageState extends State<EditKostPage> {
         final decoded = jsonDecode(value);
 
         if (decoded is List) {
-          return decoded.map<Map<String, dynamic>>((e) {
-            return Map<String, dynamic>.from(e);
-          }).toList();
+          return _parseObjectList(decoded);
+        }
+      } catch (_) {}
+
+      return value
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .map<Map<String, dynamic>>((e) {
+            return {"feature": e};
+          })
+          .toList();
+    }
+
+    return [];
+  }
+
+  List<String> _parseStringList(dynamic value) {
+    if (value == null) return [];
+
+    if (value is List) {
+      return value
+          .map((e) {
+            if (e is Map) {
+              return e['feature']?.toString() ??
+                  e['name']?.toString() ??
+                  e['title']?.toString() ??
+                  "";
+            }
+
+            return e.toString();
+          })
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+    }
+
+    if (value is String) {
+      if (value.trim().isEmpty) return [];
+
+      try {
+        final decoded = jsonDecode(value);
+
+        if (decoded is List) {
+          return _parseStringList(decoded);
+        }
+      } catch (_) {}
+
+      return value
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
+    }
+
+    return [];
+  }
+
+  List<Map<String, dynamic>> _parsePolicyList(dynamic value) {
+    if (value == null) return [];
+
+    if (value is List) {
+      return value.map<Map<String, dynamic>>((e) {
+        if (e is Map) {
+          final map = Map<String, dynamic>.from(e);
+
+          final title = map['title']?.toString() ?? "";
+          final description = map['description']?.toString() ?? "";
+          final desc = map['desc']?.toString() ?? "";
+          final policy = map['policy']?.toString() ?? "";
+
+          if (title.isEmpty && policy.isNotEmpty) {
+            map['title'] = "Aturan";
+          }
+
+          if (description.isEmpty && desc.isEmpty && policy.isNotEmpty) {
+            map['description'] = policy;
+          }
+
+          return map;
+        }
+
+        return {"title": "Aturan", "description": e.toString()};
+      }).toList();
+    }
+
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+
+        if (decoded is List) {
+          return _parsePolicyList(decoded);
         }
       } catch (_) {}
 
@@ -276,20 +340,399 @@ class _EditKostPageState extends State<EditKostPage> {
     return [];
   }
 
+  Map<String, dynamic> _emptyPolicyControllerMap() {
+    return {
+      "id": null,
+      "titleC": TextEditingController(),
+      "descC": TextEditingController(),
+    };
+  }
+
+  Map<String, dynamic> _policyToControllerMap(Map<String, dynamic> item) {
+    return {
+      "id": item['id'],
+      "titleC": TextEditingController(text: item['title']?.toString() ?? ''),
+      "descC": TextEditingController(
+        text:
+            item['description']?.toString() ??
+            item['desc']?.toString() ??
+            item['policy']?.toString() ??
+            '',
+      ),
+    };
+  }
+
   List<Map<String, String>> buildPolicyPayload(
-    List<Map<String, TextEditingController>> source,
+    List<Map<String, dynamic>> source,
   ) {
     return source
         .map((item) {
+          final titleC = item["titleC"] as TextEditingController;
+          final descC = item["descC"] as TextEditingController;
+
           return {
-            "title": item["title"]?.text.trim() ?? "",
-            "description": item["desc"]?.text.trim() ?? "",
+            "title": titleC.text.trim(),
+            "description": descC.text.trim(),
+            "policy": buildPolicyText(titleC.text.trim(), descC.text.trim()),
           };
         })
         .where((item) {
           return item["title"]!.isNotEmpty || item["description"]!.isNotEmpty;
         })
         .toList();
+  }
+
+  String buildPolicyText(String title, String description) {
+    if (title.isNotEmpty && description.isNotEmpty) {
+      return "$title - $description";
+    }
+
+    if (title.isNotEmpty) return title;
+
+    return description;
+  }
+
+  String selectedListToDatabaseString(List<String> values) {
+    return values
+        .map((item) {
+          return item
+              .toLowerCase()
+              .replaceAll(" ", "_")
+              .replaceAll(RegExp(r'[^a-z0-9_]'), '');
+        })
+        .where((item) => item.isNotEmpty)
+        .join(',');
+  }
+
+  String normalizeFeature(String value) {
+    return value.trim().toLowerCase().replaceAll("_", " ");
+  }
+
+  String? findFeatureId(List<Map<String, dynamic>> source, String featureName) {
+    final target = normalizeFeature(featureName);
+
+    for (final item in source) {
+      final name =
+          item['feature']?.toString() ??
+          item['name']?.toString() ??
+          item['title']?.toString() ??
+          "";
+
+      if (normalizeFeature(name) == target) {
+        final id =
+            item['id'] ??
+            item['feature_id'] ??
+            item['kost_feature_id'] ??
+            item['place_feature_id'];
+
+        if (id != null) return id.toString();
+      }
+    }
+
+    return null;
+  }
+
+  String getPlaceId() {
+    final k = widget.kost;
+
+    final possible =
+        k['place_id'] ?? k['place_property_id'] ?? k['place_properties_id'];
+
+    if (possible != null) {
+      return possible.toString();
+    }
+
+    if (k['place_properties'] is List &&
+        (k['place_properties'] as List).isNotEmpty) {
+      final first = (k['place_properties'] as List).first;
+
+      if (first is Map && first['id'] != null) {
+        return first['id'].toString();
+      }
+    }
+
+    if (k['places'] is List && (k['places'] as List).isNotEmpty) {
+      final first = (k['places'] as List).first;
+
+      if (first is Map && first['id'] != null) {
+        return first['id'].toString();
+      }
+    }
+    return widget.kost['id'].toString();
+  }
+
+  // SYNC FEATURES
+
+  Future<void> syncKostFeatures({
+    required String propertyId,
+    required String token,
+  }) async {
+    final current = kostFeatures.map(normalizeFeature).toList();
+    final original = originalKostFeatures.map(normalizeFeature).toList();
+
+    final added = kostFeatures.where((item) {
+      return !original.contains(normalizeFeature(item));
+    }).toList();
+
+    final removed = originalKostFeatures.where((item) {
+      return !current.contains(normalizeFeature(item));
+    }).toList();
+
+    for (final feature in added) {
+      final response = await http.post(
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/features"),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+        },
+        body: {"feature": feature},
+      );
+
+      print("ADD KOST FEATURE:");
+      print(feature);
+      print(response.statusCode);
+      print(response.body);
+    }
+
+    for (final feature in removed) {
+      final featureId = findFeatureId(originalKostFeatureObjects, feature);
+
+      if (featureId == null) continue;
+
+      final response = await http.delete(
+        Uri.parse(
+          "${ApiService.baseUrl}/properties/$propertyId/features/$featureId",
+        ),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+        },
+      );
+
+      print("DELETE KOST FEATURE:");
+      print(feature);
+      print(response.statusCode);
+      print(response.body);
+    }
+  }
+
+  Future<void> syncRoomFeatures({
+    required String propertyId,
+    required String token,
+  }) async {
+    final placeId = getPlaceId();
+
+    final current = roomFeatures.map(normalizeFeature).toList();
+    final original = originalRoomFeatures.map(normalizeFeature).toList();
+
+    final added = roomFeatures.where((item) {
+      return !original.contains(normalizeFeature(item));
+    }).toList();
+
+    final removed = originalRoomFeatures.where((item) {
+      return !current.contains(normalizeFeature(item));
+    }).toList();
+
+    for (final feature in added) {
+      final response = await http.post(
+        Uri.parse(
+          "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId/features",
+        ),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+        },
+        body: {"feature": feature},
+      );
+
+      print("ADD ROOM FEATURE:");
+      print(feature);
+      print(response.statusCode);
+      print(response.body);
+    }
+
+    for (final feature in removed) {
+      final featureId = findFeatureId(originalRoomFeatureObjects, feature);
+
+      if (featureId == null) continue;
+
+      final response = await http.delete(
+        Uri.parse(
+          "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId/features/$featureId",
+        ),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+        },
+      );
+
+      print("DELETE ROOM FEATURE:");
+      print(feature);
+      print(response.statusCode);
+      print(response.body);
+    }
+  }
+
+  // SYNC POLICIES
+
+  Future<void> syncKostPolicies({
+    required String propertyId,
+    required String token,
+  }) async {
+    final currentIds = kostPolicies
+        .map((item) => item['id'])
+        .where((id) => id != null)
+        .map((id) => id.toString())
+        .toList();
+
+    for (final original in originalKostPolicyObjects) {
+      final id = original['id'];
+
+      if (id != null && !currentIds.contains(id.toString())) {
+        final response = await http.delete(
+          Uri.parse(
+            "${ApiService.baseUrl}/properties/$propertyId/policies/$id",
+          ),
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+        );
+
+        print("DELETE KOST POLICY:");
+        print(response.statusCode);
+        print(response.body);
+      }
+    }
+
+    for (final item in kostPolicies) {
+      final id = item['id'];
+      final titleC = item['titleC'] as TextEditingController;
+      final descC = item['descC'] as TextEditingController;
+
+      final title = titleC.text.trim();
+      final description = descC.text.trim();
+
+      if (title.isEmpty && description.isEmpty) continue;
+
+      final body = {
+        "title": title,
+        "description": description,
+        "policy": buildPolicyText(title, description),
+      };
+
+      if (id == null) {
+        final response = await http.post(
+          Uri.parse("${ApiService.baseUrl}/properties/$propertyId/policies"),
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+          body: body,
+        );
+
+        print("ADD KOST POLICY:");
+        print(response.statusCode);
+        print(response.body);
+      } else {
+        final response = await http.put(
+          Uri.parse(
+            "${ApiService.baseUrl}/properties/$propertyId/policies/$id",
+          ),
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+          body: body,
+        );
+
+        print("UPDATE KOST POLICY:");
+        print(response.statusCode);
+        print(response.body);
+      }
+    }
+  }
+
+  Future<void> syncRoomPolicies({
+    required String propertyId,
+    required String token,
+  }) async {
+    final placeId = getPlaceId();
+
+    final currentIds = roomPolicies
+        .map((item) => item['id'])
+        .where((id) => id != null)
+        .map((id) => id.toString())
+        .toList();
+
+    for (final original in originalRoomPolicyObjects) {
+      final id = original['id'];
+
+      if (id != null && !currentIds.contains(id.toString())) {
+        final response = await http.delete(
+          Uri.parse(
+            "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId/policies/$id",
+          ),
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+        );
+
+        print("DELETE ROOM POLICY:");
+        print(response.statusCode);
+        print(response.body);
+      }
+    }
+
+    for (final item in roomPolicies) {
+      final id = item['id'];
+      final titleC = item['titleC'] as TextEditingController;
+      final descC = item['descC'] as TextEditingController;
+
+      final title = titleC.text.trim();
+      final description = descC.text.trim();
+
+      if (title.isEmpty && description.isEmpty) continue;
+
+      final body = {
+        "title": title,
+        "description": description,
+        "policy": buildPolicyText(title, description),
+      };
+
+      if (id == null) {
+        final response = await http.post(
+          Uri.parse(
+            "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId/policies",
+          ),
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+          body: body,
+        );
+
+        print("ADD ROOM POLICY:");
+        print(response.statusCode);
+        print(response.body);
+      } else {
+        final response = await http.put(
+          Uri.parse(
+            "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId/policies/$id",
+          ),
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+          body: body,
+        );
+
+        print("UPDATE ROOM POLICY:");
+        print(response.statusCode);
+        print(response.body);
+      }
+    }
   }
 
   // UPDATE
@@ -302,7 +745,23 @@ class _EditKostPageState extends State<EditKostPage> {
     try {
       final token = await ApiService().getToken();
 
-      final id = widget.kost['id'];
+      if (token == null || token.isEmpty) {
+        showMessage("Token tidak ditemukan, silakan login ulang");
+
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+
+        return;
+      }
+
+      final propertyId = widget.kost['id'].toString();
+
+      final kostRulesJson = jsonEncode(buildPolicyPayload(kostPolicies));
+
+      final roomRulesJson = jsonEncode(buildPolicyPayload(roomPolicies));
 
       final body = {
         "title": titleC.text,
@@ -315,22 +774,23 @@ class _EditKostPageState extends State<EditKostPage> {
         "price_perMonth": cleanPrice(monthC.text),
         "price_perYear": cleanPrice(yearC.text),
 
-        "property_features": [
-          ...propertyFeatures,
-          ...customPropertyFeatures,
-        ].join(','),
+        // Cadangan
+        "kost_facilities": selectedListToDatabaseString(kostFeatures),
+        "room_facilities": selectedListToDatabaseString(roomFeatures),
+        "kost_rules": kostRulesJson,
+        "room_rules": roomRulesJson,
 
-        "place_features": [...placeFeatures, ...customPlaceFeatures].join(','),
-
-        "property_policies": buildPolicyPayload(propertyPolicies),
-        "place_policies": buildPolicyPayload(placePolicies),
+        "property_features": selectedListToDatabaseString(kostFeatures),
+        "place_features": selectedListToDatabaseString(roomFeatures),
+        "property_policies": buildPolicyPayload(kostPolicies),
+        "place_policies": buildPolicyPayload(roomPolicies),
       };
 
       print("UPDATE BODY:");
       print(body);
 
       final res = await http.put(
-        Uri.parse("${ApiService.baseUrl}/properties/$id"),
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId"),
         headers: {
           "Authorization": "Bearer $token",
           "Accept": "application/json",
@@ -345,15 +805,31 @@ class _EditKostPageState extends State<EditKostPage> {
       print("UPDATE RESPONSE:");
       print(res.body);
 
+      if (res.statusCode != 200 && res.statusCode != 201) {
+        showMessage("Gagal memperbarui data utama kost");
+
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+
+        return;
+      }
+
+      await syncKostFeatures(propertyId: propertyId, token: token);
+
+      await syncRoomFeatures(propertyId: propertyId, token: token);
+
+      await syncKostPolicies(propertyId: propertyId, token: token);
+
+      await syncRoomPolicies(propertyId: propertyId, token: token);
+
       if (!mounted) return;
 
-      if (res.statusCode == 200) {
-        showMessage("Kost berhasil diperbarui", success: true);
+      showMessage("Kost berhasil diperbarui", success: true);
 
-        Navigator.pop(context, true);
-      } else {
-        showMessage("Gagal memperbarui kost");
-      }
+      Navigator.pop(context, true);
     } catch (e) {
       print("UPDATE ERROR:");
       print(e);
@@ -371,6 +847,8 @@ class _EditKostPageState extends State<EditKostPage> {
   }
 
   void showMessage(String message, {bool success = false}) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -393,10 +871,8 @@ class _EditKostPageState extends State<EditKostPage> {
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
           Text(
             label,
@@ -413,32 +889,25 @@ class _EditKostPageState extends State<EditKostPage> {
             controller: controller,
             keyboardType: type,
             maxLines: maxLines,
-
             decoration: InputDecoration(
               hintText: hint,
-
               prefixIcon: maxLines == 1
                   ? Icon(icon, color: primaryColor)
                   : null,
-
               filled: true,
               fillColor: const Color(0xFFF4F6FA),
-
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 16,
               ),
-
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: Colors.grey.shade200),
               ),
-
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: primaryColor, width: 1.5),
               ),
-
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide.none,
@@ -457,10 +926,8 @@ class _EditKostPageState extends State<EditKostPage> {
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
           Text(
             label,
@@ -480,34 +947,27 @@ class _EditKostPageState extends State<EditKostPage> {
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             decoration: InputDecoration(
               hintText: "0",
-
               prefixIcon: Icon(icon, color: primaryColor, size: 20),
-
               prefixText: "Rp ",
               prefixStyle: TextStyle(
                 color: primaryColor,
                 fontSize: 13,
                 fontWeight: FontWeight.bold,
               ),
-
               filled: true,
               fillColor: const Color(0xFFF4F6FA),
-
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 8,
                 vertical: 16,
               ),
-
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: Colors.grey.shade200),
               ),
-
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide(color: primaryColor, width: 1.5),
               ),
-
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(18),
                 borderSide: BorderSide.none,
@@ -530,11 +990,9 @@ class _EditKostPageState extends State<EditKostPage> {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(18),
-
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(26),
-
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.06),
@@ -543,21 +1001,17 @@ class _EditKostPageState extends State<EditKostPage> {
           ),
         ],
       ),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
           Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
-
                 decoration: BoxDecoration(
                   color: softGreen,
                   borderRadius: BorderRadius.circular(14),
                 ),
-
                 child: Icon(icon, color: primaryColor, size: 22),
               ),
 
@@ -591,16 +1045,13 @@ class _EditKostPageState extends State<EditKostPage> {
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.all(20),
-
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [primaryColor, const Color(0xFF18227A)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-
         borderRadius: BorderRadius.circular(28),
-
         boxShadow: [
           BoxShadow(
             color: primaryColor.withOpacity(0.25),
@@ -609,25 +1060,21 @@ class _EditKostPageState extends State<EditKostPage> {
           ),
         ],
       ),
-
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 6,
                   ),
-
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(30),
                   ),
-
                   child: const Text(
                     "Form Edit",
                     style: TextStyle(
@@ -667,12 +1114,10 @@ class _EditKostPageState extends State<EditKostPage> {
           Container(
             height: 68,
             width: 68,
-
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.15),
               borderRadius: BorderRadius.circular(22),
             ),
-
             child: const Icon(
               Icons.edit_note_rounded,
               color: Colors.white,
@@ -693,7 +1138,6 @@ class _EditKostPageState extends State<EditKostPage> {
   }) {
     return FilterChip(
       selected: selected,
-
       label: Text(
         feature,
         style: TextStyle(
@@ -701,19 +1145,14 @@ class _EditKostPageState extends State<EditKostPage> {
           fontWeight: FontWeight.w600,
         ),
       ),
-
       avatar: selected
           ? const Icon(Icons.check_circle, color: Colors.white, size: 18)
           : null,
-
       backgroundColor: const Color(0xFFF4F6FA),
       selectedColor: primaryColor,
       checkmarkColor: Colors.white,
-
       side: BorderSide(color: selected ? primaryColor : Colors.grey.shade200),
-
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-
       onSelected: onSelected,
     );
   }
@@ -728,32 +1167,27 @@ class _EditKostPageState extends State<EditKostPage> {
     );
   }
 
-  void addFeatureDialog(bool isProperty) {
+  void addFeatureDialog(bool isKost) {
     final controller = TextEditingController();
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-
       builder: (_) {
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
-
           child: Container(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-
             decoration: const BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
-
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
-
               children: [
                 Center(
                   child: Container(
@@ -769,9 +1203,7 @@ class _EditKostPageState extends State<EditKostPage> {
                 const SizedBox(height: 20),
 
                 Text(
-                  isProperty
-                      ? "Tambah Fasilitas Kost"
-                      : "Tambah Fasilitas Kamar",
+                  isKost ? "Tambah Fasilitas Kost" : "Tambah Fasilitas Kamar",
                   style: TextStyle(
                     color: primaryColor,
                     fontSize: 20,
@@ -784,7 +1216,7 @@ class _EditKostPageState extends State<EditKostPage> {
                 TextField(
                   controller: controller,
                   decoration: InputDecoration(
-                    hintText: "Contoh: Kolam renang, balkon, dispenser...",
+                    hintText: "Contoh: Balkon, Dispenser, Air panas...",
                     filled: true,
                     fillColor: const Color(0xFFF4F6FA),
                     prefixIcon: Icon(
@@ -803,7 +1235,6 @@ class _EditKostPageState extends State<EditKostPage> {
                 SizedBox(
                   width: double.infinity,
                   height: 52,
-
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
@@ -813,31 +1244,35 @@ class _EditKostPageState extends State<EditKostPage> {
                         borderRadius: BorderRadius.circular(18),
                       ),
                     ),
-
                     onPressed: () {
                       final value = controller.text.trim();
 
                       if (value.isEmpty) return;
 
                       setState(() {
-                        if (isProperty) {
-                          if (!customPropertyFeatures.contains(value) &&
-                              !propertyFeatures.contains(value)) {
-                            customPropertyFeatures.add(value);
-                            propertyFeatures.add(value);
+                        if (isKost) {
+                          if (!kostFeatures.contains(value)) {
+                            kostFeatures.add(value);
+                          }
+
+                          if (!kostFeatureOptions.contains(value) &&
+                              !customKostFeatures.contains(value)) {
+                            customKostFeatures.add(value);
                           }
                         } else {
-                          if (!customPlaceFeatures.contains(value) &&
-                              !placeFeatures.contains(value)) {
-                            customPlaceFeatures.add(value);
-                            placeFeatures.add(value);
+                          if (!roomFeatures.contains(value)) {
+                            roomFeatures.add(value);
+                          }
+
+                          if (!roomFeatureOptions.contains(value) &&
+                              !customRoomFeatures.contains(value)) {
+                            customRoomFeatures.add(value);
                           }
                         }
                       });
 
                       Navigator.pop(context);
                     },
-
                     child: const Text(
                       "Tambah Fasilitas",
                       style: TextStyle(fontWeight: FontWeight.bold),
@@ -855,7 +1290,7 @@ class _EditKostPageState extends State<EditKostPage> {
   Widget buildFeatureSection({
     required String title,
     required IconData icon,
-    required bool isProperty,
+    required bool isKost,
     required List<String> options,
     required List<String> selected,
     required List<String> custom,
@@ -910,7 +1345,6 @@ class _EditKostPageState extends State<EditKostPage> {
         SizedBox(
           width: double.infinity,
           height: 46,
-
           child: OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               foregroundColor: primaryColor,
@@ -919,14 +1353,12 @@ class _EditKostPageState extends State<EditKostPage> {
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-
             onPressed: () {
-              addFeatureDialog(isProperty);
+              addFeatureDialog(isKost);
             },
-
             icon: const Icon(Icons.add),
             label: Text(
-              isProperty ? "Tambah Fasilitas Kost" : "Tambah Fasilitas Kamar",
+              isKost ? "Tambah Fasilitas Kost" : "Tambah Fasilitas Kamar",
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
@@ -937,17 +1369,18 @@ class _EditKostPageState extends State<EditKostPage> {
 
   // POLICIES
 
-  Widget policyCard(List<Map<String, TextEditingController>> list, int index) {
+  Widget policyCard(List<Map<String, dynamic>> list, int index) {
+    final titleController = list[index]["titleC"] as TextEditingController;
+    final descController = list[index]["descC"] as TextEditingController;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
-
       decoration: BoxDecoration(
         color: const Color(0xFFF4F6FA),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.grey.shade200),
       ),
-
       child: Column(
         children: [
           Row(
@@ -966,8 +1399,8 @@ class _EditKostPageState extends State<EditKostPage> {
                 IconButton(
                   onPressed: () {
                     setState(() {
-                      list[index]["title"]?.dispose();
-                      list[index]["desc"]?.dispose();
+                      titleController.dispose();
+                      descController.dispose();
                       list.removeAt(index);
                     });
                   },
@@ -980,14 +1413,14 @@ class _EditKostPageState extends State<EditKostPage> {
 
           input(
             "Judul Aturan",
-            list[index]["title"]!,
+            titleController,
             icon: Icons.rule_folder_outlined,
             hint: "Contoh: Tamu wajib lapor",
           ),
 
           input(
             "Deskripsi Aturan",
-            list[index]["desc"]!,
+            descController,
             maxLines: 3,
             hint: "Tulis detail aturan di sini...",
           ),
@@ -999,7 +1432,7 @@ class _EditKostPageState extends State<EditKostPage> {
   Widget buildPolicySection({
     required String title,
     required IconData icon,
-    required List<Map<String, TextEditingController>> policies,
+    required List<Map<String, dynamic>> policies,
   }) {
     return sectionCard(
       title: title,
@@ -1012,7 +1445,6 @@ class _EditKostPageState extends State<EditKostPage> {
         SizedBox(
           width: double.infinity,
           height: 46,
-
           child: OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               foregroundColor: primaryColor,
@@ -1021,16 +1453,11 @@ class _EditKostPageState extends State<EditKostPage> {
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-
             onPressed: () {
               setState(() {
-                policies.add({
-                  "title": TextEditingController(),
-                  "desc": TextEditingController(),
-                });
+                policies.add(_emptyPolicyControllerMap());
               });
             },
-
             icon: const Icon(Icons.add),
             label: Text(
               title == "Aturan Kost"
@@ -1056,7 +1483,6 @@ class _EditKostPageState extends State<EditKostPage> {
         elevation: 0,
         foregroundColor: primaryColor,
         centerTitle: true,
-
         title: Text(
           "Edit Kost",
           style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
@@ -1066,7 +1492,6 @@ class _EditKostPageState extends State<EditKostPage> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
-
           child: Column(
             children: [
               buildHeader(),
@@ -1159,31 +1584,31 @@ class _EditKostPageState extends State<EditKostPage> {
               buildFeatureSection(
                 title: "Fasilitas Kost",
                 icon: Icons.maps_home_work_outlined,
-                isProperty: true,
-                options: propertyFeatureOptions,
-                selected: propertyFeatures,
-                custom: customPropertyFeatures,
+                isKost: true,
+                options: kostFeatureOptions,
+                selected: kostFeatures,
+                custom: customKostFeatures,
               ),
 
               buildFeatureSection(
                 title: "Fasilitas Kamar",
                 icon: Icons.bed_outlined,
-                isProperty: false,
-                options: placeFeatureOptions,
-                selected: placeFeatures,
-                custom: customPlaceFeatures,
+                isKost: false,
+                options: roomFeatureOptions,
+                selected: roomFeatures,
+                custom: customRoomFeatures,
               ),
 
               buildPolicySection(
                 title: "Aturan Kost",
                 icon: Icons.rule_outlined,
-                policies: propertyPolicies,
+                policies: kostPolicies,
               ),
 
               buildPolicySection(
                 title: "Aturan Kamar",
                 icon: Icons.meeting_room_outlined,
-                policies: placePolicies,
+                policies: roomPolicies,
               ),
             ],
           ),
@@ -1192,10 +1617,8 @@ class _EditKostPageState extends State<EditKostPage> {
 
       bottomNavigationBar: Container(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-
         decoration: BoxDecoration(
           color: Colors.white,
-
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.08),
@@ -1204,30 +1627,24 @@ class _EditKostPageState extends State<EditKostPage> {
             ),
           ],
         ),
-
         child: SafeArea(
           child: SizedBox(
             height: 54,
             width: double.infinity,
-
             child: ElevatedButton(
               onPressed: isLoading ? null : update,
-
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,
                 disabledBackgroundColor: Colors.grey,
                 elevation: 0,
-
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
               ),
-
               child: isLoading
                   ? const SizedBox(
                       height: 24,
                       width: 24,
-
                       child: CircularProgressIndicator(
                         color: Colors.white,
                         strokeWidth: 2.5,
@@ -1235,12 +1652,9 @@ class _EditKostPageState extends State<EditKostPage> {
                     )
                   : const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
-
                       children: [
                         Icon(Icons.save_alt_rounded, color: Colors.white),
-
                         SizedBox(width: 10),
-
                         Text(
                           "Update Kost",
                           style: TextStyle(

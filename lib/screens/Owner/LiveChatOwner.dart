@@ -183,8 +183,8 @@ class _LivechatownerState extends State<Livechatowner> {
         "";
   }
 
-  String getMessageTime(dynamic message) {
-    if (message is! Map) return "";
+  DateTime? getMessageDate(dynamic message) {
+    if (message is! Map) return null;
 
     final rawTime =
         message['created_at']?.toString() ??
@@ -192,18 +192,71 @@ class _LivechatownerState extends State<Livechatowner> {
         message['updated_at']?.toString() ??
         "";
 
-    if (rawTime.isEmpty) return "";
+    if (rawTime.isEmpty) return null;
 
     final parsed = DateTime.tryParse(rawTime);
 
-    if (parsed == null) return rawTime;
+    if (parsed == null) return null;
 
-    final local = parsed.toLocal();
+    return parsed.toLocal();
+  }
+
+  String getMessageTime(dynamic message) {
+    final local = getMessageDate(message);
+
+    if (local == null) {
+      if (message is! Map) return "";
+
+      return message['created_at']?.toString() ??
+          message['time']?.toString() ??
+          message['updated_at']?.toString() ??
+          "";
+    }
 
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
 
     return "$hour:$minute";
+  }
+
+  bool isSameDay(DateTime first, DateTime second) {
+    return first.year == second.year &&
+        first.month == second.month &&
+        first.day == second.day;
+  }
+
+  String getDateLabel(DateTime date) {
+    final now = DateTime.now();
+
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(date.year, date.month, date.day);
+
+    final difference = today.difference(messageDate).inDays;
+
+    if (difference == 0) {
+      return "Hari ini";
+    }
+
+    if (difference == 1) {
+      return "Kemarin";
+    }
+
+    final months = [
+      "Januari",
+      "Februari",
+      "Maret",
+      "April",
+      "Mei",
+      "Juni",
+      "Juli",
+      "Agustus",
+      "September",
+      "Oktober",
+      "November",
+      "Desember",
+    ];
+
+    return "${date.day} ${months[date.month - 1]} ${date.year}";
   }
 
   bool isMyMessage(dynamic message) {
@@ -243,6 +296,69 @@ class _LivechatownerState extends State<Livechatowner> {
     if (message is! Map) return false;
 
     return message['sending'] == true;
+  }
+
+  Widget buildDateSeparator(String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: Colors.grey.shade300, thickness: 1)),
+        ],
+      ),
+    );
+  }
+
+  Widget buildMessageItem(int index) {
+    final currentMessage = messages[index];
+    final currentDate = getMessageDate(currentMessage);
+
+    bool showDateSeparator = false;
+
+    if (currentDate != null) {
+      if (index == 0) {
+        showDateSeparator = true;
+      } else {
+        final previousMessage = messages[index - 1];
+        final previousDate = getMessageDate(previousMessage);
+
+        if (previousDate == null || !isSameDay(currentDate, previousDate)) {
+          showDateSeparator = true;
+        }
+      }
+    }
+
+    return Column(
+      children: [
+        if (showDateSeparator && currentDate != null)
+          buildDateSeparator(getDateLabel(currentDate)),
+        buildMessageBubble(currentMessage),
+      ],
+    );
   }
 
   Widget buildMessageBubble(dynamic message) {
@@ -568,7 +684,7 @@ class _LivechatownerState extends State<Livechatowner> {
                       padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
                       itemCount: messages.length,
                       itemBuilder: (context, index) {
-                        return buildMessageBubble(messages[index]);
+                        return buildMessageItem(index);
                       },
                     ),
                   ),

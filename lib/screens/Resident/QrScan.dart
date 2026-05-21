@@ -359,7 +359,7 @@ class _QrScanPageState extends State<QrScanPage>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          /// CAMERA VIEW
+          /// CAMERA 
           Positioned.fill(
             child: MobileScanner(
               controller: controller,
@@ -367,7 +367,7 @@ class _QrScanPageState extends State<QrScanPage>
             ),
           ),
 
-          /// DARK GRADIENT OVERLAY
+          /// GRADIENT OVERLAY
           Positioned.fill(
             child: IgnorePointer(
               child: Container(
@@ -386,7 +386,7 @@ class _QrScanPageState extends State<QrScanPage>
             ),
           ),
 
-          /// DECORATIVE BLUR CIRCLES
+          ///BLUR
           Positioned(
             top: 120,
             left: -70,
@@ -399,7 +399,7 @@ class _QrScanPageState extends State<QrScanPage>
             child: _blurCircle(color: const Color(0xFF2D2F8F), size: 190),
           ),
 
-          /// TOP BAR
+          /// TOP
           Positioned(
             top: 0,
             left: 0,
@@ -612,7 +612,7 @@ class _QrScanPageState extends State<QrScanPage>
             ),
           ),
 
-          /// BOTTOM TOMBOL
+          /// TOMBOL
           Positioned(
             bottom: 34,
             left: 0,

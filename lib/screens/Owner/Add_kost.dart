@@ -219,23 +219,23 @@ class _AddKostPageState extends State<AddKostPage> {
     });
   }
 
-  // =========================
-  // UPLOAD FITUR KOST
-  // Masuk ke backend sebagai kost_features
-  // =========================
 
   Future<void> uploadKostFeatures({
     required String propertyId,
     required String token,
   }) async {
+    final String placeId = propertyId;
+
     for (final feature in selectedKostFacilities) {
       final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/kost-features"),
+        Uri.parse(
+          "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId/features",
+        ),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
-        body: {'name': feature},
+        body: {'feature': feature},
       );
 
       print("UPLOAD KOST FEATURE:");
@@ -249,25 +249,18 @@ class _AddKostPageState extends State<AddKostPage> {
     }
   }
 
-  // =========================
-  // UPLOAD FITUR KAMAR
-  // Masuk ke backend sebagai place_features
-  // =========================
-
   Future<void> uploadRoomFeatures({
     required String propertyId,
     required String token,
   }) async {
     for (final feature in selectedRoomFacilities) {
       final response = await http.post(
-        Uri.parse(
-          "${ApiService.baseUrl}/properties/$propertyId/place-features",
-        ),
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/features"),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
         },
-        body: {'name': feature},
+        body: {'feature': feature},
       );
 
       print("UPLOAD ROOM FEATURE:");
@@ -281,20 +274,20 @@ class _AddKostPageState extends State<AddKostPage> {
     }
   }
 
-  // =========================
-  // UPLOAD ATURAN KOST
-  // Masuk ke backend sebagai kost_policies
-  // =========================
 
   Future<void> uploadKostPolicies({
     required String propertyId,
     required String token,
   }) async {
+    final String placeId = propertyId;
+
     final rules = buildRulesPayload(kostRules);
 
     for (final rule in rules) {
       final response = await http.post(
-        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/kost-policies"),
+        Uri.parse(
+          "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId/policies",
+        ),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -315,11 +308,7 @@ class _AddKostPageState extends State<AddKostPage> {
       print(response.body);
     }
   }
-
-  // =========================
-  // UPLOAD ATURAN KAMAR
-  // Masuk ke backend sebagai place_policies
-  // =========================
+=
 
   Future<void> uploadRoomPolicies({
     required String propertyId,
@@ -329,9 +318,7 @@ class _AddKostPageState extends State<AddKostPage> {
 
     for (final rule in rules) {
       final response = await http.post(
-        Uri.parse(
-          "${ApiService.baseUrl}/properties/$propertyId/place-policies",
-        ),
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/policies"),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -403,7 +390,6 @@ class _AddKostPageState extends State<AddKostPage> {
         'max_people': maxPeopleController.text,
         'status': 'active',
 
-        // Tetap dikirim juga di body utama sebagai cadangan
         'kost_facilities': kostFacilitiesString,
         'room_facilities': roomFacilitiesString,
         'kost_rules': kostRulesJson,
@@ -478,11 +464,6 @@ class _AddKostPageState extends State<AddKostPage> {
       print("PROPERTY ID:");
       print(propertyId);
 
-      // =========================
-      // PENTING:
-      // Upload fasilitas dan peraturan ke endpoint relasi
-      // =========================
-
       await uploadKostFeatures(propertyId: propertyId, token: token);
 
       await uploadRoomFeatures(propertyId: propertyId, token: token);
@@ -490,10 +471,6 @@ class _AddKostPageState extends State<AddKostPage> {
       await uploadKostPolicies(propertyId: propertyId, token: token);
 
       await uploadRoomPolicies(propertyId: propertyId, token: token);
-
-      // =========================
-      // UPLOAD IMAGE
-      // =========================
 
       var request = http.MultipartRequest(
         'POST',
@@ -567,7 +544,9 @@ class _AddKostPageState extends State<AddKostPage> {
               fontSize: 14,
             ),
           ),
+
           const SizedBox(height: 8),
+
           TextField(
             controller: controller,
             keyboardType: type,
@@ -620,7 +599,9 @@ class _AddKostPageState extends State<AddKostPage> {
               fontSize: 14,
             ),
           ),
+
           const SizedBox(height: 8),
+
           TextField(
             controller: controller,
             keyboardType: TextInputType.number,
@@ -693,7 +674,9 @@ class _AddKostPageState extends State<AddKostPage> {
                 ),
                 child: Icon(icon, color: primaryColor, size: 22),
               ),
+
               const SizedBox(width: 12),
+
               Expanded(
                 child: Text(
                   title,
@@ -706,7 +689,9 @@ class _AddKostPageState extends State<AddKostPage> {
               ),
             ],
           ),
+
           const SizedBox(height: 18),
+
           ...children,
         ],
       ),
@@ -761,6 +746,7 @@ class _AddKostPageState extends State<AddKostPage> {
                   ),
                 ),
               ),
+
               if (list.length > 1)
                 IconButton(
                   onPressed: () {
@@ -774,13 +760,16 @@ class _AddKostPageState extends State<AddKostPage> {
                 ),
             ],
           ),
+
           const SizedBox(height: 8),
+
           input(
             "Judul Aturan",
             list[index]["title"]!,
             icon: Icons.rule_folder_outlined,
             hint: "Contoh: Tamu wajib lapor",
           ),
+
           input(
             "Deskripsi Aturan",
             list[index]["desc"]!,
@@ -804,6 +793,7 @@ class _AddKostPageState extends State<AddKostPage> {
         ...List.generate(policies.length, (index) {
           return policyCard(policies, index);
         }),
+
         SizedBox(
           width: double.infinity,
           height: 46,
@@ -877,7 +867,9 @@ class _AddKostPageState extends State<AddKostPage> {
                       color: Colors.white,
                     ),
                   ),
+
                   const SizedBox(height: 16),
+
                   const Text(
                     "Tambah Foto Kost",
                     style: TextStyle(
@@ -886,7 +878,9 @@ class _AddKostPageState extends State<AddKostPage> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+
                   const SizedBox(height: 6),
+
                   Text(
                     "Upload maksimal 15 gambar",
                     style: TextStyle(
@@ -914,7 +908,9 @@ class _AddKostPageState extends State<AddKostPage> {
                             color: primaryColor,
                           ),
                         ),
+
                         const SizedBox(width: 10),
+
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -927,6 +923,7 @@ class _AddKostPageState extends State<AddKostPage> {
                                   fontSize: 16,
                                 ),
                               ),
+
                               Text(
                                 "Ketuk area ini untuk tambah foto lagi",
                                 style: TextStyle(
@@ -939,7 +936,9 @@ class _AddKostPageState extends State<AddKostPage> {
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 12),
+
                     Expanded(
                       child: GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
@@ -962,6 +961,7 @@ class _AddKostPageState extends State<AddKostPage> {
                                   fit: BoxFit.cover,
                                 ),
                               ),
+
                               Positioned(
                                 top: 4,
                                 right: 4,
@@ -1041,7 +1041,9 @@ class _AddKostPageState extends State<AddKostPage> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 14),
+
                 const Text(
                   "Tambah Kost Baru",
                   style: TextStyle(
@@ -1050,7 +1052,9 @@ class _AddKostPageState extends State<AddKostPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+
                 const SizedBox(height: 6),
+
                 Text(
                   "Lengkapi data kos agar mudah ditemukan penyewa.",
                   style: TextStyle(
@@ -1061,6 +1065,7 @@ class _AddKostPageState extends State<AddKostPage> {
               ],
             ),
           ),
+
           Container(
             height: 68,
             width: 68,
@@ -1160,18 +1165,21 @@ class _AddKostPageState extends State<AddKostPage> {
                     icon: Icons.apartment_outlined,
                     hint: "Contoh: Kost Melati Semarang",
                   ),
+
                   input(
                     "Deskripsi",
                     descController,
                     maxLines: 4,
                     hint: "Jelaskan kondisi, fasilitas, dan keunggulan kost...",
                   ),
+
                   input(
                     "Alamat",
                     addressController,
                     maxLines: 3,
                     hint: "Masukkan alamat lengkap kost...",
                   ),
+
                   Text(
                     "Pilih Kota",
                     style: TextStyle(
@@ -1180,9 +1188,13 @@ class _AddKostPageState extends State<AddKostPage> {
                       fontSize: 14,
                     ),
                   ),
+
                   const SizedBox(height: 8),
+
                   cityDropdown(),
+
                   const SizedBox(height: 16),
+
                   input(
                     "Max Orang",
                     maxPeopleController,
@@ -1206,7 +1218,9 @@ class _AddKostPageState extends State<AddKostPage> {
                           icon: Icons.nightlight_round,
                         ),
                       ),
+
                       const SizedBox(width: 12),
+
                       Expanded(
                         child: priceInput(
                           "Harga Minggu",
@@ -1216,6 +1230,7 @@ class _AddKostPageState extends State<AddKostPage> {
                       ),
                     ],
                   ),
+
                   Row(
                     children: [
                       Expanded(
@@ -1225,7 +1240,9 @@ class _AddKostPageState extends State<AddKostPage> {
                           icon: Icons.calendar_month_outlined,
                         ),
                       ),
+
                       const SizedBox(width: 12),
+
                       Expanded(
                         child: priceInput(
                           "Harga Tahun",
