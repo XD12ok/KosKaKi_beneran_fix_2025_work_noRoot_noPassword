@@ -215,26 +215,6 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
               },
             ),
           ),
-
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-
-            child: IconButton(
-              icon: const Icon(Icons.person_outline, color: Color(0xFF0A0E50)),
-              onPressed: () {},
-            ),
-          ),
         ],
       ),
 

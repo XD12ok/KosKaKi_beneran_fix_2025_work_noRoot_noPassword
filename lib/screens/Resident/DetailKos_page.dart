@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Owner/LiveChatOwner.dart';
+import 'package:koskaki/screens/Resident/AjukanSurvey.dart';
+import 'package:koskaki/screens/Resident/PengajuanSewa.dart';
 import 'package:koskaki/service/api_service.dart';
 
 class DetailKosPage extends StatefulWidget {
@@ -20,6 +22,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
   Map<String, dynamic>? detail;
 
   List<dynamic> images = [];
+  List<dynamic> nearbyPlaces = [];
 
   int currentImageIndex = 0;
 
@@ -45,6 +48,12 @@ class _DetailKosPageState extends State<DetailKosPage> {
         setState(() {
           detail = Map<String, dynamic>.from(widget.kos);
           images = extractImages(widget.kos).take(15).toList();
+          nearbyPlaces = parseDynamicList(
+            widget.kos['nearby_places'] ??
+                widget.kos['nearbyPlaces'] ??
+                widget.kos['nearby'] ??
+                widget.kos['property_nearby_places'],
+          );
           currentImageIndex = 0;
           isLoading = false;
         });
@@ -73,11 +82,47 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ? decoded['data'] ?? decoded
             : widget.kos;
 
+        List<dynamic> nearbyData = parseDynamicList(
+          data['nearby_places'] ??
+              data['nearbyPlaces'] ??
+              data['nearby'] ??
+              data['property_nearby_places'],
+        );
+
+        try {
+          final nearbyResponse = await http.get(
+            Uri.parse("${ApiService.baseUrl}/properties/$id/nearby-places"),
+            headers: {
+              "Accept": "application/json",
+              if (token != null) "Authorization": "Bearer $token",
+            },
+          );
+
+          debugPrint("NEARBY RESIDENT STATUS:");
+          debugPrint(nearbyResponse.statusCode.toString());
+
+          debugPrint("NEARBY RESIDENT BODY:");
+          debugPrint(nearbyResponse.body);
+
+          if (nearbyResponse.statusCode == 200) {
+            final nearbyDecoded = jsonDecode(nearbyResponse.body);
+            final endpointNearby = parseDynamicList(nearbyDecoded);
+
+            if (endpointNearby.isNotEmpty) {
+              nearbyData = endpointNearby;
+            }
+          }
+        } catch (e) {
+          debugPrint("GET NEARBY RESIDENT ERROR:");
+          debugPrint(e.toString());
+        }
+
         if (!mounted) return;
 
         setState(() {
           detail = Map<String, dynamic>.from(data);
           images = extractImages(data).take(15).toList();
+          nearbyPlaces = nearbyData;
           currentImageIndex = 0;
           isLoading = false;
         });
@@ -87,6 +132,12 @@ class _DetailKosPageState extends State<DetailKosPage> {
         setState(() {
           detail = Map<String, dynamic>.from(widget.kos);
           images = extractImages(widget.kos).take(15).toList();
+          nearbyPlaces = parseDynamicList(
+            widget.kos['nearby_places'] ??
+                widget.kos['nearbyPlaces'] ??
+                widget.kos['nearby'] ??
+                widget.kos['property_nearby_places'],
+          );
           currentImageIndex = 0;
           isLoading = false;
         });
@@ -100,10 +151,59 @@ class _DetailKosPageState extends State<DetailKosPage> {
       setState(() {
         detail = Map<String, dynamic>.from(widget.kos);
         images = extractImages(widget.kos).take(15).toList();
+        nearbyPlaces = parseDynamicList(
+          widget.kos['nearby_places'] ??
+              widget.kos['nearbyPlaces'] ??
+              widget.kos['nearby'] ??
+              widget.kos['property_nearby_places'],
+        );
         currentImageIndex = 0;
         isLoading = false;
       });
     }
+  }
+
+  List<dynamic> parseDynamicList(dynamic value) {
+    if (value == null) return [];
+
+    if (value is List) {
+      return value;
+    }
+
+    if (value is Map) {
+      if (value['data'] is List) {
+        return List<dynamic>.from(value['data']);
+      }
+
+      if (value['data'] is Map && value['data']['data'] is List) {
+        return List<dynamic>.from(value['data']['data']);
+      }
+
+      if (value['nearby_places'] is List) {
+        return List<dynamic>.from(value['nearby_places']);
+      }
+
+      if (value['nearbyPlaces'] is List) {
+        return List<dynamic>.from(value['nearbyPlaces']);
+      }
+
+      if (value['places'] is List) {
+        return List<dynamic>.from(value['places']);
+      }
+
+      if (value['items'] is List) {
+        return List<dynamic>.from(value['items']);
+      }
+    }
+
+    if (value is String && value.trim().isNotEmpty && value != "null") {
+      try {
+        final decoded = jsonDecode(value);
+        return parseDynamicList(decoded);
+      } catch (_) {}
+    }
+
+    return [];
   }
 
   List<dynamic> extractImages(dynamic data) {
@@ -128,6 +228,43 @@ class _DetailKosPageState extends State<DetailKosPage> {
     }
 
     return result.toSet().toList();
+  }
+
+  void openImageViewer(int initialIndex) {
+    if (images.isEmpty) return;
+
+    final imageUrls = images
+        .take(15)
+        .map((item) {
+          return fixUrl(item);
+        })
+        .where((url) {
+          return url.trim().isNotEmpty;
+        })
+        .toList();
+
+    if (imageUrls.isEmpty) return;
+
+    if (initialIndex < 0 || initialIndex >= imageUrls.length) return;
+
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        opaque: true,
+        barrierColor: Colors.black,
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        pageBuilder: (_, animation, __) {
+          return FadeTransition(
+            opacity: animation,
+            child: FullscreenImageViewer(
+              imageUrls: imageUrls,
+              initialIndex: initialIndex,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   String formatRupiah(dynamic value) {
@@ -418,6 +555,166 @@ class _DetailKosPageState extends State<DetailKosPage> {
     return int.tryParse(value?.toString() ?? "0") ?? 0;
   }
 
+  String formatDistance(dynamic value) {
+    if (value == null) return "";
+
+    String text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return "";
+
+    text = text.replaceAll(',', '.');
+
+    if (text.endsWith('.0')) {
+      text = text.substring(0, text.length - 2);
+    }
+
+    return text;
+  }
+
+  String getNearbyName(dynamic item) {
+    if (item is! Map) return "-";
+
+    final map = Map<String, dynamic>.from(item);
+
+    final place = map['place'] ?? map['places'] ?? map['nearby_place'];
+
+    if (place is Map) {
+      final placeMap = Map<String, dynamic>.from(place);
+
+      final name =
+          placeMap['name']?.toString() ??
+          placeMap['title']?.toString() ??
+          placeMap['place_name']?.toString() ??
+          placeMap['nama']?.toString() ??
+          "";
+
+      if (name.trim().isNotEmpty && name != "null") {
+        return name;
+      }
+    }
+
+    return map['name']?.toString() ??
+        map['title']?.toString() ??
+        map['place_name']?.toString() ??
+        map['nama']?.toString() ??
+        map['location_name']?.toString() ??
+        "-";
+  }
+
+  String getNearbyType(dynamic item) {
+    if (item is! Map) return "";
+
+    final map = Map<String, dynamic>.from(item);
+
+    final place = map['place'] ?? map['places'] ?? map['nearby_place'];
+
+    if (place is Map) {
+      final placeMap = Map<String, dynamic>.from(place);
+
+      final type =
+          placeMap['type']?.toString() ??
+          placeMap['category']?.toString() ??
+          placeMap['place_type']?.toString() ??
+          placeMap['kategori']?.toString() ??
+          "";
+
+      if (type.trim().isNotEmpty && type != "null") {
+        return type;
+      }
+    }
+
+    return map['type']?.toString() ??
+        map['category']?.toString() ??
+        map['place_type']?.toString() ??
+        map['kategori']?.toString() ??
+        "";
+  }
+
+  String getNearbyDistance(dynamic item) {
+    if (item is! Map) return "";
+
+    final map = Map<String, dynamic>.from(item);
+
+    final pivot = map['pivot'];
+
+    if (pivot is Map) {
+      final pivotMap = Map<String, dynamic>.from(pivot);
+
+      final distance =
+          pivotMap['distance']?.toString() ??
+          pivotMap['distance_km']?.toString() ??
+          pivotMap['jarak']?.toString() ??
+          "";
+
+      if (distance.trim().isNotEmpty && distance != "null") {
+        return formatDistance(distance);
+      }
+    }
+
+    final distance =
+        map['distance']?.toString() ??
+        map['distance_km']?.toString() ??
+        map['jarak']?.toString() ??
+        map['range']?.toString() ??
+        "";
+
+    return formatDistance(distance);
+  }
+
+  IconData getNearbyIcon(String type, String name) {
+    final text = "$type $name".toLowerCase();
+
+    if (text.contains("bandara") || text.contains("airport")) {
+      return Icons.flight_takeoff_rounded;
+    }
+
+    if (text.contains("stasiun") || text.contains("station")) {
+      return Icons.train_rounded;
+    }
+
+    if (text.contains("terminal") || text.contains("bus")) {
+      return Icons.directions_bus_rounded;
+    }
+
+    if (text.contains("kampus") ||
+        text.contains("universitas") ||
+        text.contains("sekolah")) {
+      return Icons.school_rounded;
+    }
+
+    if (text.contains("rumah sakit") ||
+        text.contains("hospital") ||
+        text.contains("rs")) {
+      return Icons.local_hospital_rounded;
+    }
+
+    if (text.contains("mall") ||
+        text.contains("pusat belanja") ||
+        text.contains("plaza")) {
+      return Icons.local_mall_rounded;
+    }
+
+    if (text.contains("pasar")) {
+      return Icons.storefront_rounded;
+    }
+
+    if (text.contains("masjid") ||
+        text.contains("gereja") ||
+        text.contains("ibadah")) {
+      return Icons.place_rounded;
+    }
+
+    if (text.contains("halte")) {
+      return Icons.directions_bus_filled_rounded;
+    }
+
+    if (text.contains("alun") || text.contains("pusat kota")) {
+      return Icons.location_city_rounded;
+    }
+
+    return Icons.near_me_rounded;
+  }
+
   IconData getFacilityIcon(String value) {
     final text = value.toLowerCase();
 
@@ -608,6 +905,79 @@ class _DetailKosPageState extends State<DetailKosPage> {
     );
   }
 
+  void goToAjukanSurvey() {
+    final d = detail ?? widget.kos;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        settings: RouteSettings(
+          arguments: {
+            'kos': d,
+            'property_id': d['id'] ?? widget.kos['id'],
+            'title': d['title'] ?? d['name'],
+            'address': d['address'],
+            'owner': d['owner'],
+            'owner_id': d['owner_id'],
+          },
+        ),
+        builder: (_) => AjukanSurvey(),
+      ),
+    );
+  }
+
+  void goToPengajuanSewa() {
+    final d = detail ?? widget.kos;
+  
+    final propertyId = d['id'] ?? widget.kos['id'];
+  
+    final owner = d['owner'];
+  
+    final ownerId = owner is Map
+        ? owner['id']
+        : d['owner_id'] ?? widget.kos['owner_id'];
+  
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        settings: RouteSettings(
+          arguments: {
+            'kos': d,
+  
+            // ID kos / property
+            'property_id': propertyId,
+            'place_property_id': propertyId,
+            'place_properties_id': propertyId,
+  
+            // Data utama
+            'title': d['title'] ?? d['name'],
+            'name': d['name'] ?? d['title'],
+            'address': d['address'],
+            'description': d['description'],
+  
+            // Owner
+            'owner': d['owner'],
+            'owner_id': ownerId,
+            'owner_name': owner is Map
+                ? owner['name']
+                : d['owner_name'],
+  
+            // Harga
+            'price_perNight': d['price_perNight'] ?? d['price_per_night'],
+            'price_perWeek': d['price_perWeek'] ?? d['price_per_week'],
+            'price_perMonth': d['price_perMonth'] ?? d['price_per_month'],
+            'price_perYear': d['price_perYear'] ?? d['price_per_year'],
+  
+            // Gambar
+            'main_image': d['main_image'],
+            'images': d['images'],
+          },
+        ),
+        builder: (_) => PengajuanSewa(),
+      ),
+    );
+  }
+
   Future<void> goToChatOwner() async {
     final d = detail ?? widget.kos;
 
@@ -782,6 +1152,8 @@ class _DetailKosPageState extends State<DetailKosPage> {
                       ratingCount: ratingCount,
                     ),
 
+                    nearbyPlacesSection(items: nearbyPlaces),
+
                     descriptionSection(description),
 
                     facilitySection(
@@ -816,7 +1188,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
 
   Widget buildBottomActionBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -831,59 +1203,104 @@ class _DetailKosPageState extends State<DetailKosPage> {
         child: Row(
           children: [
             Expanded(
-              child: SizedBox(
-                height: 52,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: primaryColor,
-                    side: BorderSide(
-                      color: primaryColor.withOpacity(0.35),
-                      width: 1.4,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  onPressed: goToChatOwner,
-                  icon: const Icon(Icons.chat_bubble_outline_rounded),
-                  label: const Text(
-                    "Hubungi Pemilik",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                ),
+              child: bottomActionButton(
+                label: "Hubungi",
+                icon: Icons.chat_bubble_outline_rounded,
+                isPrimary: false,
+                onTap: goToChatOwner,
               ),
             ),
-
-            const SizedBox(width: 12),
-
+            const SizedBox(width: 8),
             Expanded(
-              child: SizedBox(
-                height: 52,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  onPressed: showRentSnack,
-                  icon: const Icon(Icons.key_rounded),
-                  label: const Text(
-                    "Mulai Menyewa",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                  ),
-                ),
+              child: bottomActionButton(
+                label: "Survey",
+                icon: Icons.assignment_turned_in_outlined,
+                isPrimary: false,
+                onTap: goToAjukanSurvey,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: bottomActionButton(
+                label: "Sewa",
+                icon: Icons.key_rounded,
+                isPrimary: true,
+                onTap: goToPengajuanSewa,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget bottomActionButton({
+    required String label,
+    required IconData icon,
+    required bool isPrimary,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      height: 54,
+      child: isPrimary
+          ? ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              onPressed: onTap,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 19),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: primaryColor,
+                side: BorderSide(
+                  color: primaryColor.withOpacity(0.28),
+                  width: 1.3,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              onPressed: onTap,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 19),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -896,7 +1313,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
       children: [
         if (prices.isEmpty)
           emptyMiniState(
-            icon: Icons.money_off_csred_rounded,
+            icon: Icons.payments_outlined,
             text: "Harga belum ditambahkan",
           )
         else
@@ -944,9 +1361,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 ),
                 child: Icon(item.icon, color: Colors.white, size: 17),
               ),
-
               const SizedBox(width: 8),
-
               Expanded(
                 child: Text(
                   item.title,
@@ -961,9 +1376,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
               ),
             ],
           ),
-
           const Spacer(),
-
           Text(
             item.price,
             maxLines: 1,
@@ -974,9 +1387,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
               fontSize: 14,
             ),
           ),
-
           const SizedBox(height: 2),
-
           Text(
             item.subtitle,
             maxLines: 1,
@@ -1024,9 +1435,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 value: title,
               ),
             ),
-
             const SizedBox(width: 10),
-
             Expanded(
               child: miniInfoCard(
                 icon: Icons.location_city_rounded,
@@ -1036,9 +1445,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ],
         ),
-
         const SizedBox(height: 10),
-
         Row(
           children: [
             Expanded(
@@ -1048,9 +1455,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 value: maxPeople.isEmpty ? "Belum ada" : "$maxPeople orang",
               ),
             ),
-
             const SizedBox(width: 10),
-
             Expanded(
               child: miniInfoCard(
                 icon: Icons.verified_rounded,
@@ -1062,9 +1467,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ],
         ),
-
         const SizedBox(height: 10),
-
         Row(
           children: [
             Expanded(
@@ -1074,9 +1477,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 value: ratingText,
               ),
             ),
-
             const SizedBox(width: 10),
-
             Expanded(
               child: miniInfoCard(
                 icon: Icons.sell_outlined,
@@ -1086,9 +1487,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ],
         ),
-
         const SizedBox(height: 12),
-
         fullInfoCard(
           icon: Icons.location_on_outlined,
           title: "Alamat Lengkap",
@@ -1114,9 +1513,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: primaryColor, size: 21),
-
           const Spacer(),
-
           Text(
             title,
             maxLines: 1,
@@ -1127,9 +1524,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
               fontWeight: FontWeight.w600,
             ),
           ),
-
           const SizedBox(height: 3),
-
           Text(
             value,
             maxLines: 1,
@@ -1161,9 +1556,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: primaryColor, size: 22),
-
           const SizedBox(width: 12),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1176,9 +1569,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-
                 const SizedBox(height: 4),
-
                 Text(
                   value,
                   style: const TextStyle(
@@ -1189,6 +1580,144 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget nearbyPlacesSection({required List<dynamic> items}) {
+    return sectionCard(
+      title: "Lokasi Terdekat",
+      icon: Icons.near_me_outlined,
+      children: [
+        if (items.isEmpty)
+          emptyMiniState(
+            icon: Icons.location_off_outlined,
+            text: "Lokasi terdekat belum ditambahkan",
+          )
+        else
+          Column(
+            children: [
+              SizedBox(
+                height: 132,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+
+                    final name = getNearbyName(item);
+                    final type = getNearbyType(item);
+                    final distance = getNearbyDistance(item);
+                    final icon = getNearbyIcon(type, name);
+
+                    return nearbyPlaceCard(
+                      name: name,
+                      type: type,
+                      distance: distance,
+                      icon: icon,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget nearbyPlaceCard({
+    required String name,
+    required String type,
+    required String distance,
+    required IconData icon,
+  }) {
+    return Container(
+      width: 215,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [const Color(0xFFF4F6FA), softGreen.withOpacity(0.65)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 42,
+                width: 42,
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const Spacer(),
+              if (type.trim().isNotEmpty && type != "null")
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: primaryColor.withOpacity(0.08)),
+                  ),
+                  child: Text(
+                    normalizeText(type),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(
+            name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+              height: 1.2,
+            ),
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              Icon(Icons.route_rounded, color: primaryColor, size: 17),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  distance.trim().isEmpty
+                      ? "Jarak belum tersedia"
+                      : "$distance KM dari kos",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1280,34 +1809,43 @@ class _DetailKosPageState extends State<DetailKosPage> {
                             );
                           }
 
-                          return Image.network(
-                            img,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              openImageViewer(index);
+                            },
+                            child: Hero(
+                              tag: "detail-kos-image-$index",
+                              child: Image.network(
+                                img,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
 
-                              return Container(
-                                color: Colors.grey.shade200,
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    color: primaryColor,
-                                  ),
-                                ),
-                              );
-                            },
-                            errorBuilder: (_, __, ___) {
-                              return imageEmptyState(
-                                icon: Icons.broken_image_outlined,
-                                text: "Gambar gagal dimuat",
-                              );
-                            },
+                                      return Container(
+                                        color: Colors.grey.shade200,
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                            color: primaryColor,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                errorBuilder: (_, __, ___) {
+                                  return imageEmptyState(
+                                    icon: Icons.broken_image_outlined,
+                                    text: "Gambar gagal dimuat",
+                                  );
+                                },
+                              ),
+                            ),
                           );
                         },
                       ),
               ),
-
               Positioned.fill(
                 child: IgnorePointer(
                   child: Container(
@@ -1324,7 +1862,6 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                 ),
               ),
-
               Positioned(
                 top: 16,
                 left: 16,
@@ -1349,9 +1886,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                           color: Colors.white,
                           size: 15,
                         ),
-
                         const SizedBox(width: 5),
-
                         Text(
                           status.toLowerCase() == "active"
                               ? "Tersedia"
@@ -1367,7 +1902,6 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                 ),
               ),
-
               if (images.isNotEmpty)
                 Positioned(
                   top: 16,
@@ -1385,13 +1919,11 @@ class _DetailKosPageState extends State<DetailKosPage> {
                       child: Row(
                         children: [
                           Icon(
-                            Icons.photo_library_outlined,
+                            Icons.zoom_out_map_rounded,
                             size: 16,
                             color: primaryColor,
                           ),
-
                           const SizedBox(width: 5),
-
                           Text(
                             "${currentImageIndex + 1}/$imageCount",
                             style: TextStyle(
@@ -1405,7 +1937,6 @@ class _DetailKosPageState extends State<DetailKosPage> {
                     ),
                   ),
                 ),
-
               Positioned(
                 left: 18,
                 right: 18,
@@ -1424,7 +1955,6 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                 ),
               ),
-
               if (imageCount > 1)
                 Positioned(
                   left: 0,
@@ -1475,9 +2005,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 64, color: Colors.grey.shade500),
-
           const SizedBox(height: 10),
-
           Text(
             text,
             style: TextStyle(
@@ -1536,9 +2064,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   ),
                   child: Icon(icon, color: primaryColor, size: 22),
                 ),
-
                 const SizedBox(width: 12),
-
                 Expanded(
                   child: Text(
                     title,
@@ -1551,9 +2077,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 ),
               ],
             ),
-
             const SizedBox(height: 18),
-
             ...children,
           ],
         ),
@@ -1612,9 +2136,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                         size: 18,
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     Text(
                       item,
                       maxLines: 2,
@@ -1688,9 +2210,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                       ),
                       child: Icon(policyIcon, color: primaryColor, size: 23),
                     ),
-
                     const SizedBox(width: 12),
-
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1704,9 +2224,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                               fontSize: 14,
                             ),
                           ),
-
                           const SizedBox(height: 5),
-
                           Text(
                             policyDesc.isEmpty
                                 ? "Deskripsi aturan belum ditambahkan"
@@ -1740,9 +2258,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
       child: Row(
         children: [
           Icon(icon, color: Colors.grey.shade500),
-
           const SizedBox(width: 10),
-
           Expanded(
             child: Text(
               text,
@@ -1777,24 +2293,18 @@ class _DetailKosPageState extends State<DetailKosPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
-
             const SizedBox(height: 14),
-
             const Text(
               "Data tidak ditemukan",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-
             const SizedBox(height: 8),
-
             Text(
               "Detail kos belum bisa dimuat. Coba refresh halaman ini.",
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey.shade600, height: 1.4),
             ),
-
             const SizedBox(height: 18),
-
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,
@@ -1809,6 +2319,186 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class FullscreenImageViewer extends StatefulWidget {
+  final List<String> imageUrls;
+  final int initialIndex;
+
+  const FullscreenImageViewer({
+    super.key,
+    required this.imageUrls,
+    required this.initialIndex,
+  });
+
+  @override
+  State<FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+}
+
+class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
+  late final PageController _pageController;
+  late int currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+
+    currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void closeViewer() {
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.imageUrls.length;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: total,
+            onPageChanged: (index) {
+              setState(() {
+                currentIndex = index;
+              });
+            },
+            itemBuilder: (context, index) {
+              final url = widget.imageUrls[index];
+
+              if (url.trim().isEmpty) {
+                return const Center(
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.white,
+                    size: 70,
+                  ),
+                );
+              }
+
+              return Center(
+                child: Hero(
+                  tag: "detail-kos-image-$index",
+                  child: InteractiveViewer(
+                    minScale: 1,
+                    maxScale: 4,
+                    panEnabled: true,
+                    scaleEnabled: true,
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+
+                        return const Center(
+                          child: CircularProgressIndicator(color: Colors.white),
+                        );
+                      },
+                      errorBuilder: (_, __, ___) {
+                        return const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white,
+                            size: 70,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: closeViewer,
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.14),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.18),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.18),
+                        ),
+                      ),
+                      child: Text(
+                        "${currentIndex + 1}/$total",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  "Cubit untuk zoom • Geser untuk melihat foto lain",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.72),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
