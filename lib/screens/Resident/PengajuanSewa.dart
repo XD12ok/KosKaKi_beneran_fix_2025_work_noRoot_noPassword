@@ -24,6 +24,9 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
   bool hasReadArguments = false;
   bool isLoading = false;
 
+  final TextEditingController senderNameController = TextEditingController();
+  final TextEditingController notesController = TextEditingController();
+
   Map<String, dynamic> kos = {};
 
   int? propertyId;
@@ -51,6 +54,13 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
 
     readArguments();
     prepareRentalOptions();
+  }
+
+  @override
+  void dispose() {
+    senderNameController.dispose();
+    notesController.dispose();
+    super.dispose();
   }
 
   Map<String, dynamic>? toMap(dynamic value) {
@@ -440,7 +450,7 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     if (night > 0) {
       options.add(
         _RentalOption(
-          type: "daily",
+          type: "night",
           title: "Harian",
           unitLabel: "malam",
           priceLabel: "per malam",
@@ -579,7 +589,21 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
   String formatRupiah(dynamic value) {
     if (value == null) return "0";
 
-    final number = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+    String raw = value.toString().trim();
+
+    if (raw.isEmpty || raw == "null") return "0";
+
+    raw = raw.replaceAll("Rp", "").trim();
+
+    if (RegExp(r',\d{1,2}$').hasMatch(raw)) {
+      raw = raw.split(',').first;
+    }
+
+    if (RegExp(r'\.\d{1,2}$').hasMatch(raw)) {
+      raw = raw.split('.').first;
+    }
+
+    final number = raw.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (number.isEmpty) return "0";
 
@@ -807,7 +831,7 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
 
   List<String> getDurationTypeCandidates(String type) {
     if (isDailyRentalType(type)) {
-      return ["daily", "per_day", "day", "night", "per_night", "harian"];
+      return ["night"];
     }
 
     return [type];
@@ -916,10 +940,10 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
 
   int getRentalBookingId(Map<String, dynamic> data) {
     final directId = parseIntValue(
-      data['id'] ??
-          data['rental_booking_id'] ??
+      data['rental_booking_id'] ??
           data['rentalBookingId'] ??
-          data['rental_id'],
+          data['rental_id'] ??
+          data['id'],
     );
 
     if (directId > 0) return directId;
@@ -927,15 +951,14 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     final rentalBooking =
         toMap(data['rental_booking']) ??
         toMap(data['rentalBooking']) ??
-        toMap(data['rental']) ??
-        toMap(data['booking']);
+        toMap(data['rental']);
 
     if (rentalBooking != null) {
       final nestedId = parseIntValue(
-        rentalBooking['id'] ??
-            rentalBooking['rental_booking_id'] ??
+        rentalBooking['rental_booking_id'] ??
             rentalBooking['rentalBookingId'] ??
-            rentalBooking['booking_id'],
+            rentalBooking['rental_id'] ??
+            rentalBooking['id'],
       );
 
       if (nestedId > 0) return nestedId;
@@ -945,10 +968,10 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
 
     if (nestedData != null) {
       final nestedDirectId = parseIntValue(
-        nestedData['id'] ??
-            nestedData['rental_booking_id'] ??
+        nestedData['rental_booking_id'] ??
             nestedData['rentalBookingId'] ??
-            nestedData['rental_id'],
+            nestedData['rental_id'] ??
+            nestedData['id'],
       );
 
       if (nestedDirectId > 0) return nestedDirectId;
@@ -956,15 +979,14 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
       final nestedRentalBooking =
           toMap(nestedData['rental_booking']) ??
           toMap(nestedData['rentalBooking']) ??
-          toMap(nestedData['rental']) ??
-          toMap(nestedData['booking']);
+          toMap(nestedData['rental']);
 
       if (nestedRentalBooking != null) {
         final nestedRentalId = parseIntValue(
-          nestedRentalBooking['id'] ??
-              nestedRentalBooking['rental_booking_id'] ??
+          nestedRentalBooking['rental_booking_id'] ??
               nestedRentalBooking['rentalBookingId'] ??
-              nestedRentalBooking['booking_id'],
+              nestedRentalBooking['rental_id'] ??
+              nestedRentalBooking['id'],
         );
 
         if (nestedRentalId > 0) return nestedRentalId;
@@ -972,6 +994,49 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     }
 
     return 0;
+  }
+
+  bool hasInvoiceData(Map<String, dynamic> data) {
+    final invoice =
+        toMap(data['invoice']) ??
+        toMap(data['current_invoice']) ??
+        toMap(data['initial_invoice']);
+
+    if (invoice != null) return true;
+
+    final invoices = data['invoices'];
+
+    if (invoices is List && invoices.isNotEmpty) {
+      return true;
+    }
+
+    final rentalBooking =
+        toMap(data['rental_booking']) ??
+        toMap(data['rentalBooking']) ??
+        toMap(data['rental']);
+
+    if (rentalBooking != null) {
+      final rentalInvoice =
+          toMap(rentalBooking['invoice']) ??
+          toMap(rentalBooking['current_invoice']) ??
+          toMap(rentalBooking['initial_invoice']);
+
+      if (rentalInvoice != null) return true;
+
+      final rentalInvoices = rentalBooking['invoices'];
+
+      if (rentalInvoices is List && rentalInvoices.isNotEmpty) {
+        return true;
+      }
+    }
+
+    final nestedData = toMap(data['data']);
+
+    if (nestedData != null) {
+      return hasInvoiceData(nestedData);
+    }
+
+    return false;
   }
 
   Future<void> submitRentalBooking() async {
@@ -1000,11 +1065,26 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
 
       final rentalBookingData = await createRentalBooking(bookingId: bookingId);
 
+      debugPrint("PARSED RENTAL BOOKING DATA:");
+      debugPrint(rentalBookingData.toString());
+
       final rentalBookingId = getRentalBookingId(rentalBookingData);
+
+      debugPrint("FINAL RENTAL BOOKING ID:");
+      debugPrint(rentalBookingId.toString());
+
+      debugPrint("SURVEY BOOKING ID:");
+      debugPrint(bookingId.toString());
 
       if (rentalBookingId <= 0) {
         throw Exception(
           "Pengajuan sewa berhasil dibuat, tapi ID rental booking tidak ditemukan",
+        );
+      }
+
+      if (rentalBookingId == bookingId) {
+        throw Exception(
+          "ID rental booking terbaca sama dengan ID survey. Response backend belum mengirim ID rental booking yang benar.",
         );
       }
 
@@ -1044,6 +1124,9 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
               'unit_price': selectedOption?.price,
               'total_price': totalPrice,
               'amount': totalPrice,
+
+              'sender_name': senderNameController.text.trim(),
+              'notes': notesController.text.trim(),
             },
           ),
           builder: (_) => const Payment(),
@@ -1227,6 +1310,65 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
           ...children,
         ],
       ),
+    );
+  }
+
+  Widget inputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    int maxLines = 1,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        textInputAction: maxLines > 1
+            ? TextInputAction.newline
+            : TextInputAction.next,
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          icon: Icon(icon, color: primaryColor, size: 22),
+          labelText: label,
+          hintText: hint,
+          labelStyle: TextStyle(
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+          ),
+          hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+        ),
+      ),
+    );
+  }
+
+  Widget paymentInfoSection() {
+    return sectionCard(
+      title: "Informasi Pembayaran",
+      icon: Icons.account_balance_wallet_outlined,
+      children: [
+        inputField(
+          controller: senderNameController,
+          label: "Nama Pengirim",
+          hint: "Contoh: Rahes",
+          icon: Icons.person_outline_rounded,
+        ),
+        inputField(
+          controller: notesController,
+          label: "Catatan",
+          hint: "Contoh: Pembayaran DP sewa kos",
+          icon: Icons.notes_rounded,
+          maxLines: 3,
+        ),
+      ],
     );
   }
 
@@ -1624,6 +1766,20 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
           title: "Estimasi Selesai",
           value: formatReadableDate(endDate),
         ),
+        summaryItem(
+          icon: Icons.person_outline_rounded,
+          title: "Nama Pengirim",
+          value: senderNameController.text.trim().isEmpty
+              ? "-"
+              : senderNameController.text.trim(),
+        ),
+        summaryItem(
+          icon: Icons.notes_rounded,
+          title: "Catatan",
+          value: notesController.text.trim().isEmpty
+              ? "-"
+              : notesController.text.trim(),
+        ),
         const SizedBox(height: 6),
         totalBox(),
       ],
@@ -1728,6 +1884,7 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
               buildHeader(),
               rentalTypeSection(),
               scheduleSection(),
+              paymentInfoSection(),
               summarySection(),
             ],
           ),
@@ -1749,8 +1906,8 @@ class _RentalOption {
     required this.type,
     required this.title,
     required this.unitLabel,
-    required this.priceLabel,
     required this.price,
+    required this.priceLabel,
     required this.icon,
   });
 }

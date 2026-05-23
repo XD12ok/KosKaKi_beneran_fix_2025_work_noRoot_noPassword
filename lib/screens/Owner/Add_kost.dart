@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-
+import 'package:koskaki/screens/Owner/Maps.dart';
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1574,6 +1574,49 @@ class _AddKostPageState extends State<AddKostPage> {
     );
   }
 
+  Widget mapPageButton() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          final result = await Navigator.push<String>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OwnerMapsPage(
+                initialAddress: addressController.text.trim().isEmpty
+                    ? "Kendeng badminton stadium, Semarang"
+                    : addressController.text.trim(),
+              ),
+            ),
+          );
+
+          if (!mounted) return;
+
+          if (result != null && result.trim().isNotEmpty) {
+            setState(() {
+              addressController.text = result.trim();
+            });
+          }
+        },
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primaryColor,
+          side: BorderSide(color: primaryColor.withOpacity(0.35)),
+          backgroundColor: const Color(0xFFF4F6FA),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+        icon: Icon(Icons.map_outlined, color: primaryColor),
+        label: const Text(
+          "Buka Halaman Maps",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1623,6 +1666,8 @@ class _AddKostPageState extends State<AddKostPage> {
                     maxLines: 3,
                     hint: "Masukkan alamat lengkap kost...",
                   ),
+
+                  mapPageButton(),
 
                   Text(
                     "Pilih Kota",

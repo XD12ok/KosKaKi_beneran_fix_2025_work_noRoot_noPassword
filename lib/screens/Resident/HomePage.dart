@@ -8,6 +8,7 @@ import 'package:koskaki/screens/Resident/Profile.dart';
 import 'package:koskaki/screens/Resident/QrScan.dart';
 import 'package:koskaki/screens/Resident/SearchResult.dart';
 import 'package:koskaki/service/api_service.dart';
+import 'package:koskaki/screens/Resident/RiwayatSewa.dart';
 
 const Color primaryColor = Color(0xFF2D2F8F);
 const Color secondaryColor = Color(0xFF5B5FEF);
@@ -366,6 +367,13 @@ class _HomePageState extends State<HomePage> {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const QrScanPage()),
+    );
+  }
+
+  Future<void> openRiwayatSewaPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RiwayatSewaPage()),
     );
   }
 
@@ -1046,7 +1054,7 @@ class _HomePageState extends State<HomePage> {
         );
       },
       child: GestureDetector(
-        onTap: () => showComingSoon("Riwayat pemesanan"),
+        onTap: openRiwayatSewaPage,
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -1079,7 +1087,9 @@ class _HomePageState extends State<HomePage> {
                   size: 38,
                 ),
               ),
+
               const SizedBox(width: 14),
+
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1092,9 +1102,11 @@ class _HomePageState extends State<HomePage> {
                         color: darkText,
                       ),
                     ),
+
                     SizedBox(height: 5),
+
                     Text(
-                      "Fitur pemesanan belum digunakan. Saat ini hanya menampilkan detail kos.",
+                      "Lihat status sewa, tanggal sewa, pembayaran, dan invoice kos kamu.",
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.black54,
@@ -1104,6 +1116,7 @@ class _HomePageState extends State<HomePage> {
                   ],
                 ),
               ),
+
               Container(
                 width: 34,
                 height: 34,
@@ -1112,8 +1125,8 @@ class _HomePageState extends State<HomePage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
-                  Icons.info_outline_rounded,
-                  size: 18,
+                  Icons.arrow_forward_ios_rounded,
+                  size: 16,
                   color: primaryColor,
                 ),
               ),
