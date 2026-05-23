@@ -29,7 +29,6 @@ environment:
 # versions available, run `flutter pub outdated`.
 dependencies:
   shared_preferences: ^2.5.3
-  flutter_native_splash: ^2.4.7
   google_fonts: ^6.1.0
   pinput: ^3.0.1
   mobile_scanner: ^5.1.1
@@ -115,14 +114,3 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-
-flutter_native_splash:
-  color: "#FFFFFF"
-  image: assets/logo1.png
-  android_gravity: center
-
-
-  android_12:
-    color: "#FFFFFF"
-    image: assets/logo1.png
-

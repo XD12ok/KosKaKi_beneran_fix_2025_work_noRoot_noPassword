@@ -22,6 +22,10 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
   final FlutterLocalNotificationsPlugin localNotifications =
       FlutterLocalNotificationsPlugin();
 
+  static const String surveyBookingPrefix = "KOSKAKI_SURVEY_BOOKING_CARD::";
+  static const String surveyReschedulePrefix =
+      "KOSKAKI_SURVEY_RESCHEDULE_CARD::";
+
   List<dynamic> conversations = [];
 
   bool isLoading = true;
@@ -101,6 +105,130 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
     if (value is Map || value is List) return "";
 
     return value.toString().trim();
+  }
+
+  Map<String, dynamic>? decodeSpecialCardPayload(String text, String prefix) {
+    final clean = text.trim();
+
+    if (clean.isEmpty) return null;
+
+    final cleanLower = clean.toLowerCase();
+    final prefixLower = prefix.toLowerCase();
+
+    if (!cleanLower.startsWith(prefixLower)) return null;
+
+    final rawJson = clean.substring(prefix.length).trim();
+
+    if (rawJson.isEmpty) return null;
+
+    try {
+      final decoded = jsonDecode(rawJson);
+
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint("DECODE CHAT LIST CARD ERROR:");
+      debugPrint(e.toString());
+      return null;
+    }
+  }
+
+  String normalizeCardStatus(dynamic value) {
+    return value?.toString().toLowerCase().trim() ?? "";
+  }
+
+  String surveyBookingPreview(Map<String, dynamic> payload) {
+    final status = normalizeCardStatus(payload['status']);
+
+    final title = cleanText(payload['title']).isEmpty
+        ? "kos"
+        : cleanText(payload['title']);
+
+    if (status == "accepted" || status == "approved") {
+      return "Survey diterima • $title";
+    }
+
+    if (status == "rejected") {
+      return "Survey ditolak • $title";
+    }
+
+    if (status == "cancelled" || status == "canceled") {
+      return "Survey dibatalkan • $title";
+    }
+
+    if (status == "completed" || status == "complete") {
+      return "Survey selesai • $title";
+    }
+
+    if (status == "reschedule_requested") {
+      return "Reschedule survey diajukan • $title";
+    }
+
+    if (status == "reschedule_approved") {
+      return "Reschedule survey diterima • $title";
+    }
+
+    if (status == "reschedule_rejected") {
+      return "Reschedule survey ditolak • $title";
+    }
+
+    if (status == "reschedule_cancelled" || status == "reschedule_canceled") {
+      return "Reschedule survey dibatalkan • $title";
+    }
+
+    return "Mengajukan survey kost • $title";
+  }
+
+  String surveyReschedulePreview(Map<String, dynamic> payload) {
+    final status = normalizeCardStatus(payload['status']);
+
+    final title = cleanText(payload['title']).isEmpty
+        ? "kos"
+        : cleanText(payload['title']);
+
+    if (status == "approved" || status == "accepted") {
+      return "Reschedule survey diterima • $title";
+    }
+
+    if (status == "rejected") {
+      return "Reschedule survey ditolak • $title";
+    }
+
+    if (status == "cancelled" || status == "canceled") {
+      return "Reschedule survey dibatalkan • $title";
+    }
+
+    return "Pemilik mengajukan reschedule survey • $title";
+  }
+
+  String getReadableLastMessage(String text) {
+    final clean = text.trim();
+
+    if (clean.isEmpty) return "";
+
+    final surveyPayload = decodeSpecialCardPayload(clean, surveyBookingPrefix);
+
+    if (surveyPayload != null) {
+      return surveyBookingPreview(surveyPayload);
+    }
+
+    final reschedulePayload = decodeSpecialCardPayload(
+      clean,
+      surveyReschedulePrefix,
+    );
+
+    if (reschedulePayload != null) {
+      return surveyReschedulePreview(reschedulePayload);
+    }
+
+    return clean;
   }
 
   DateTime? parseDateTime(dynamic value) {
@@ -441,20 +569,20 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
       final textFromMap = getTextFromMessageMap(lastMessageMap);
 
       if (textFromMap.isNotEmpty) {
-        return textFromMap;
+        return getReadableLastMessage(textFromMap);
       }
     }
 
     final textFromDirectValue = cleanText(lastMessage);
 
     if (textFromDirectValue.isNotEmpty) {
-      return textFromDirectValue;
+      return getReadableLastMessage(textFromDirectValue);
     }
 
     final topLevelText = getTextFromMessageMap(data);
 
     if (topLevelText.isNotEmpty) {
-      return topLevelText;
+      return getReadableLastMessage(topLevelText);
     }
 
     return "Belum ada pesan";
@@ -486,6 +614,37 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
         parseDateTime(data['time']);
   }
 
+  String getRawLastMessage(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return "";
+
+    final lastMessage = getLastMessageValue(data);
+    final lastMessageMap = toMap(lastMessage);
+
+    if (lastMessageMap != null) {
+      final textFromMap = getTextFromMessageMap(lastMessageMap);
+
+      if (textFromMap.isNotEmpty) {
+        return textFromMap;
+      }
+    }
+
+    final textFromDirectValue = cleanText(lastMessage);
+
+    if (textFromDirectValue.isNotEmpty) {
+      return textFromDirectValue;
+    }
+
+    final topLevelText = getTextFromMessageMap(data);
+
+    if (topLevelText.isNotEmpty) {
+      return topLevelText;
+    }
+
+    return "";
+  }
+
   String getLastMessageKey(dynamic chat) {
     final data = toMap(chat);
 
@@ -493,7 +652,7 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
 
     final lastMessageMap = getLastMessageMap(chat);
     final chatDate = getChatDate(chat);
-    final text = getLastMessage(chat);
+    final rawText = getRawLastMessage(chat);
 
     final id = cleanText(lastMessageMap?['id']).isNotEmpty
         ? cleanText(lastMessageMap?['id'])
@@ -503,7 +662,7 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
 
     final dateText = chatDate?.toIso8601String() ?? "";
 
-    return "$id|$dateText|$text";
+    return "$id|$dateText|$rawText";
   }
 
   bool isLastMessageMine(dynamic chat) {
@@ -878,12 +1037,15 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
       final properties = toMap(map['properties']);
       final placeProperty = toMap(map['place_property']);
       final placePropertyCamel = toMap(map['placeProperty']);
+      final placeProperties = toMap(map['place_properties']);
+      final placePropertiesCamel = toMap(map['placeProperties']);
       final kos = toMap(map['kos']);
       final kost = toMap(map['kost']);
       final conversation = toMap(map['conversation']);
 
       return toInt(map['property_id']) ??
           toInt(map['properties_id']) ??
+          toInt(map['place_properties_id']) ??
           toInt(map['place_property_id']) ??
           toInt(map['placePropertyId']) ??
           toInt(map['kos_id']) ??
@@ -892,9 +1054,12 @@ class _ChatListOwnerPageState extends State<ChatListOwnerPage> {
           toInt(properties?['id']) ??
           toInt(placeProperty?['id']) ??
           toInt(placePropertyCamel?['id']) ??
+          toInt(placeProperties?['id']) ??
+          toInt(placePropertiesCamel?['id']) ??
           toInt(kos?['id']) ??
           toInt(kost?['id']) ??
           toInt(conversation?['property_id']) ??
+          toInt(conversation?['place_properties_id']) ??
           toInt(conversation?['place_property_id']) ??
           0;
     }
