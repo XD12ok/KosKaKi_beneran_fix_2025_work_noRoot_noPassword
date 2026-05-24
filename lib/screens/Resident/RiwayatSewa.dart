@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:koskaki/screens/Resident/HomePage.dart';
 import 'package:koskaki/service/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const Color primaryColor = Color(0xFF2D2F8F);
 const Color secondaryColor = Color(0xFF5B5FEF);
@@ -31,6 +33,9 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
 
   List<Map<String, dynamic>> histories = [];
 
+  Map<int, Map<String, dynamic>> familyCodesByRentalId = {};
+  Set<int> generatingFamilyCodeRentalIds = {};
+
   final ImagePicker imagePicker = ImagePicker();
 
   @override
@@ -44,7 +49,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
 
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => HomePage()),
+      MaterialPageRoute(builder: (_) => const HomePage()),
       (route) => false,
     );
   }
@@ -70,9 +75,104 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
       "Accept": "application/json",
       "Authorization": "Bearer $cleanedToken",
       "X-Requested-With": "XMLHttpRequest",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
     };
   }
 
+  Future<Map<String, dynamic>?> readCachedPropertyInfo(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(key);
+  
+      if (raw == null || raw.trim().isEmpty) return null;
+  
+      final decoded = jsonDecode(raw);
+  
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+  
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+  
+      return null;
+    } catch (e) {
+      debugPrint("READ CACHED PROPERTY INFO ERROR:");
+      debugPrint(e.toString());
+      return null;
+    }
+  }
+  
+  Future<Map<String, dynamic>?> getCachedPropertyInfo({
+    required int rentalId,
+    int? bookingId,
+    int? propertyId,
+  }) async {
+    final keys = <String>[];
+  
+    if (rentalId > 0) {
+      keys.add("rental_property_info_$rentalId");
+    }
+  
+    if (propertyId != null && propertyId > 0) {
+      keys.add("property_info_$propertyId");
+    }
+  
+    for (final key in keys) {
+      final cached = await readCachedPropertyInfo(key);
+  
+      if (cached == null) continue;
+  
+      final cachedName = getKosNameOnly(cached);
+      final cachedAddress = getKosAddressOnly(cached);
+  
+      if (isValidKosText(cachedName) || isValidKosText(cachedAddress)) {
+        debugPrint("CACHE PROPERTY DITEMUKAN DARI KEY: $key");
+        debugPrint(cached.toString());
+        return cached;
+      }
+    }
+  
+    return null;
+  }
+  
+  void applyPropertyInfoToBooking({
+    required Map<String, dynamic> booking,
+    required Map<String, dynamic> source,
+  }) {
+    final name = getKosNameOnly(source);
+    final address = getKosAddressOnly(source);
+  
+    if (isValidKosText(name)) {
+      booking["_history_property_name"] = name;
+      booking["_safe_property_name"] = name;
+  
+      booking["property_name"] = name;
+      booking["place_property_name"] = name;
+      booking["nama_kos"] = name;
+      booking["nama_kost"] = name;
+      booking["kos_name"] = name;
+      booking["kost_name"] = name;
+      booking["property_title"] = name;
+      booking["title"] = name;
+    }
+  
+    if (isValidKosText(address)) {
+      booking["_history_property_address"] = address;
+      booking["_safe_property_address"] = address;
+  
+      booking["property_address"] = address;
+      booking["place_property_address"] = address;
+      booking["address"] = address;
+      booking["alamat"] = address;
+      booking["location"] = address;
+      booking["lokasi"] = address;
+    }
+  }
+  
   Future<void> loadRiwayatSewa() async {
     try {
       if (mounted) {
@@ -95,13 +195,17 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
         return;
       }
 
+      final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+
       final responses = await Future.wait([
         http.get(
-          Uri.parse("${ApiService.baseUrl}/rental-bookings"),
+          Uri.parse("${ApiService.baseUrl}/rental-bookings?_=$cacheBuster"),
           headers: authHeaders(token),
         ),
         http.get(
-          Uri.parse("${ApiService.baseUrl}/rental-bookings/history"),
+          Uri.parse(
+            "${ApiService.baseUrl}/rental-bookings/history?_=$cacheBuster",
+          ),
           headers: authHeaders(token),
         ),
       ]);
@@ -109,15 +213,10 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
       final response = responses[0];
       final historyResponse = responses[1];
 
-      debugPrint("RIWAYAT SEWA STATUS:");
-      debugPrint(response.statusCode.toString());
-      debugPrint("RIWAYAT SEWA BODY:");
-      debugPrint(response.body);
-
-      debugPrint("RIWAYAT HISTORY STATUS:");
-      debugPrint(historyResponse.statusCode.toString());
-      debugPrint("RIWAYAT HISTORY BODY:");
-      debugPrint(historyResponse.body);
+      debugPrint("RIWAYAT SEWA STATUS: ${response.statusCode}");
+      debugPrint("RIWAYAT SEWA BODY: ${response.body}");
+      debugPrint("RIWAYAT HISTORY STATUS: ${historyResponse.statusCode}");
+      debugPrint("RIWAYAT HISTORY BODY: ${historyResponse.body}");
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -146,32 +245,10 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
               "propertyId",
             ]);
 
-            final kosName = findFirstTextDeep(historyItem, [
-              "property_name",
-              "nama_kos",
-              "nama_kost",
-              "kos_name",
-              "kost_name",
-              "place_name",
-              "property_title",
-              "title",
-              "name",
-              "nama",
-            ]);
+            final kosName = getKosNameOnly(historyItem);
+            final kosAddress = getKosAddressOnly(historyItem);
 
-            final kosAddress = findFirstTextDeep(historyItem, [
-              "address",
-              "alamat",
-              "location",
-              "lokasi",
-              "full_address",
-              "alamat_lengkap",
-            ]);
-
-            final mapped = {
-              "name": kosName,
-              "address": kosAddress,
-            };
+            final mapped = {"name": kosName, "address": kosAddress};
 
             if (rentalId > 0) {
               historyMap["rental:$rentalId"] = mapped;
@@ -187,9 +264,6 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
             }
           }
         }
-
-        debugPrint("RIWAYAT HISTORY MAP:");
-        debugPrint(historyMap.toString());
 
         final List<Map<String, dynamic>> result = [];
 
@@ -217,25 +291,46 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
               historyMap["id:$rentalId"] ??
               historyMap["booking:$bookingId"] ??
               historyMap["property:$propertyId"];
-
+          
           if (historyData != null) {
             final name = historyData["name"]?.toString().trim() ?? "";
             final address = historyData["address"]?.toString().trim() ?? "";
-
-            if (name.isNotEmpty && name != "null") {
+          
+            if (isValidKosText(name)) {
               booking["_history_property_name"] = name;
             }
-
-            if (address.isNotEmpty && address != "null") {
+          
+            if (isValidKosText(address)) {
               booking["_history_property_address"] = address;
             }
           }
+          
+          final cachedPropertyInfo = await getCachedPropertyInfo(
+            rentalId: rentalId,
+            bookingId: bookingId,
+            propertyId: propertyId,
+          );
+          
+          if (cachedPropertyInfo != null) {
+            applyPropertyInfoToBooking(
+              booking: booking,
+              source: cachedPropertyInfo,
+            );
+          }
+
+          final safeName = getKosNameOnly(booking);
+          final safeAddress = getKosAddressOnly(booking);
+
+          if (isValidKosText(safeName)) {
+            booking["_safe_property_name"] = safeName;
+          }
+
+          if (isValidKosText(safeAddress)) {
+            booking["_safe_property_address"] = safeAddress;
+          }
 
           debugPrint("FINAL NAMA KOS RIWAYAT:");
-          debugPrint(
-            booking["_history_property_name"]?.toString() ??
-                getPropertyName(booking),
-          );
+          debugPrint(getPropertyName(booking));
 
           if (rentalId > 0) {
             final invoices = await fetchInvoicesForBooking(
@@ -249,7 +344,19 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
             }
           }
 
-          result.add(booking);
+          if (hasAnyPaymentProof(booking)) {
+            result.add(booking);
+          } else {
+            debugPrint("SKIP RIWAYAT TANPA BUKTI PEMBAYARAN:");
+            debugPrint(
+              {
+                "rental_booking_id": rentalId,
+                "booking_id": bookingId,
+                "property_id": propertyId,
+                "property_name": getPropertyName(booking),
+              }.toString(),
+            );
+          }
         }
 
         if (!mounted) return;
@@ -258,6 +365,8 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
           histories = result;
           loading = false;
         });
+
+        await generateFamilyCodesForPaidHistories(items: result, token: token);
 
         return;
       }
@@ -297,26 +406,252 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     }
   }
 
-  String findFirstTextDeep(dynamic source, List<String> keys) {
+  bool isHistoryPaidForFamilyCode(Map<String, dynamic> item) {
+    final latestInvoice = getLatestInvoice(item);
+    final latestPayment = getLatestPayment(item);
+
+    final displayStatus = getDisplayStatusForHistory(
+      item: item,
+      latestInvoice: latestInvoice,
+      latestPayment: latestPayment,
+    );
+
+    final latestPaymentStatus = latestPayment?["status"];
+    final latestInvoiceStatus = latestInvoice?["status"];
+
+    return isPaidInvoiceStatus(displayStatus) ||
+        isPaidInvoiceStatus(item["payment_status"]) ||
+        isPaidInvoiceStatus(item["status"]) ||
+        isPaidInvoiceStatus(latestInvoiceStatus) ||
+        isPaidInvoiceStatus(latestPaymentStatus);
+  }
+
+  Future<void> generateFamilyCodesForPaidHistories({
+    required List<Map<String, dynamic>> items,
+    required String token,
+  }) async {
+    for (final item in items) {
+      if (!isHistoryPaidForFamilyCode(item)) continue;
+
+      await generateFamilyCodeForItem(
+        item,
+        tokenOverride: token,
+        showUserMessage: false,
+      );
+    }
+  }
+
+  Future<void> generateFamilyCodeForItem(
+    Map<String, dynamic> item, {
+    String? tokenOverride,
+    bool showUserMessage = true,
+  }) async {
+    final rentalBookingId = getRentalBookingId(item);
+
+    if (rentalBookingId <= 0) {
+      if (showUserMessage) {
+        showMessage("Rental booking ID tidak ditemukan.");
+      }
+      return;
+    }
+
+    if (familyCodesByRentalId.containsKey(rentalBookingId)) return;
+    if (generatingFamilyCodeRentalIds.contains(rentalBookingId)) return;
+
+    final token = tokenOverride ?? cleanToken(await ApiService().getToken());
+
+    if (token.isEmpty) {
+      if (showUserMessage) {
+        showMessage("Token tidak ditemukan. Silakan login ulang.");
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      generatingFamilyCodeRentalIds.add(rentalBookingId);
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse("${ApiService.baseUrl}/family/generate/$rentalBookingId"),
+        headers: authHeaders(token),
+      );
+
+      debugPrint("GENERATE FAMILY CODE RIWAYAT STATUS: ${response.statusCode}");
+      debugPrint("GENERATE FAMILY CODE RIWAYAT BODY: ${response.body}");
+
+      final decoded = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (decoded is Map) {
+          final data = asMap(decoded["data"]);
+
+          if (data != null && data["code"] != null) {
+            if (!mounted) return;
+
+            setState(() {
+              familyCodesByRentalId[rentalBookingId] = data;
+            });
+
+            if (showUserMessage) {
+              showMessage("Kode family berhasil dibuat.");
+            }
+          }
+        }
+
+        return;
+      }
+
+      if (showUserMessage) {
+        showMessage(
+          parseResponseMessage(response.body, "Gagal membuat kode family."),
+        );
+      }
+    } catch (e) {
+      debugPrint("GENERATE FAMILY CODE RIWAYAT ERROR:");
+      debugPrint(e.toString());
+
+      if (showUserMessage) {
+        showMessage("Terjadi kesalahan saat membuat kode family.");
+      }
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        generatingFamilyCodeRentalIds.remove(rentalBookingId);
+      });
+    }
+  }
+
+  bool isValidKosText(String? value) {
+    final text = value?.trim() ?? "";
+
+    if (text.isEmpty) return false;
+    if (text == "null") return false;
+    if (text.startsWith("{")) return false;
+    if (text.startsWith("[")) return false;
+
+    return true;
+  }
+
+  bool isBlockedObjectKey(String key) {
+    final lower = key.toLowerCase();
+
+    return lower == "user" ||
+        lower == "owner" ||
+        lower == "tenant" ||
+        lower == "resident" ||
+        lower == "customer" ||
+        lower == "payments" ||
+        lower == "payment" ||
+        lower == "rental_payments" ||
+        lower == "rentalpayments" ||
+        lower == "invoice" ||
+        lower == "invoices" ||
+        lower == "latest_invoice" ||
+        lower == "current_invoice" ||
+        lower == "initial_invoice" ||
+        lower == "reviews" ||
+        lower == "review";
+  }
+
+  bool isPropertyObjectKey(String key) {
+    final lower = key.toLowerCase();
+
+    return lower == "property" ||
+        lower == "place_property" ||
+        lower == "placeproperty" ||
+        lower == "place_properties" ||
+        lower == "placeproperties" ||
+        lower == "place_property_data" ||
+        lower == "property_data" ||
+        lower == "place" ||
+        lower == "kos" ||
+        lower == "kost";
+  }
+
+  String pickTextFromMap(Map source, List<String> keys) {
+    for (final key in keys) {
+      final value = source[key];
+
+      if (value == null) continue;
+
+      final text = value.toString().trim();
+
+      if (isValidKosText(text)) {
+        return text;
+      }
+    }
+
+    return "";
+  }
+
+  String getKosNameOnly(dynamic source, {bool propertyContext = false}) {
     if (source == null) return "";
 
     if (source is Map) {
-      for (final key in keys) {
-        final value = source[key];
+      final safeTopKeys = [
+        "_history_property_name",
+        "_safe_property_name",
+        "place_property_name",
+        "property_name",
+        "nama_kos",
+        "nama_kost",
+        "kos_name",
+        "kost_name",
+        "place_name",
+        "property_title",
+        "title",
+      ];
 
-        if (value != null) {
-          final text = value.toString().trim();
+      final propertyKeys = [
+        "_history_property_name",
+        "_safe_property_name",
+        "place_property_name",
+        "property_name",
+        "nama_kos",
+        "nama_kost",
+        "kos_name",
+        "kost_name",
+        "place_name",
+        "property_title",
+        "title",
+        "name",
+        "nama",
+      ];
 
-          if (text.isNotEmpty && text != "null" && !text.startsWith("{")) {
-            return text;
-          }
-        }
+      final direct = pickTextFromMap(
+        source,
+        propertyContext ? propertyKeys : safeTopKeys,
+      );
+
+      if (isValidKosText(direct)) {
+        return direct;
       }
 
-      for (final value in source.values) {
-        final result = findFirstTextDeep(value, keys);
+      final rentalBooking = source["rental_booking"] ?? source["rentalBooking"];
 
-        if (result.isNotEmpty) {
+      if (rentalBooking is Map) {
+        final result = getKosNameOnly(rentalBooking);
+
+        if (isValidKosText(result)) return result;
+      }
+
+      for (final entry in source.entries) {
+        final key = entry.key.toString();
+
+        if (isBlockedObjectKey(key)) continue;
+
+        final childPropertyContext = isPropertyObjectKey(key);
+
+        final result = getKosNameOnly(
+          entry.value,
+          propertyContext: childPropertyContext,
+        );
+
+        if (isValidKosText(result)) {
           return result;
         }
       }
@@ -324,9 +659,71 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
 
     if (source is List) {
       for (final item in source) {
-        final result = findFirstTextDeep(item, keys);
+        final result = getKosNameOnly(item);
 
-        if (result.isNotEmpty) {
+        if (isValidKosText(result)) {
+          return result;
+        }
+      }
+    }
+
+    return "";
+  }
+
+  String getKosAddressOnly(dynamic source, {bool propertyContext = false}) {
+    if (source == null) return "";
+
+    if (source is Map) {
+      final addressKeys = [
+        "_history_property_address",
+        "_safe_property_address",
+        "property_address",
+        "place_property_address",
+        "address",
+        "alamat",
+        "location",
+        "lokasi",
+        "full_address",
+        "alamat_lengkap",
+      ];
+
+      final direct = pickTextFromMap(source, addressKeys);
+
+      if (isValidKosText(direct)) {
+        return direct;
+      }
+
+      final rentalBooking = source["rental_booking"] ?? source["rentalBooking"];
+
+      if (rentalBooking is Map) {
+        final result = getKosAddressOnly(rentalBooking);
+
+        if (isValidKosText(result)) return result;
+      }
+
+      for (final entry in source.entries) {
+        final key = entry.key.toString();
+
+        if (isBlockedObjectKey(key)) continue;
+
+        final childPropertyContext = isPropertyObjectKey(key);
+
+        final result = getKosAddressOnly(
+          entry.value,
+          propertyContext: childPropertyContext,
+        );
+
+        if (isValidKosText(result)) {
+          return result;
+        }
+      }
+    }
+
+    if (source is List) {
+      for (final item in source) {
+        final result = getKosAddressOnly(item);
+
+        if (isValidKosText(result)) {
           return result;
         }
       }
@@ -347,8 +744,12 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
         }
       }
 
-      for (final value in source.values) {
-        final result = findFirstIntDeep(value, keys);
+      for (final entry in source.entries) {
+        final key = entry.key.toString();
+
+        if (isBlockedObjectKey(key)) continue;
+
+        final result = findFirstIntDeep(entry.value, keys);
 
         if (result != null && result > 0) {
           return result;
@@ -387,14 +788,9 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
           headers: authHeaders(token),
         );
 
-        debugPrint("GET INVOICES URL:");
-        debugPrint(url);
-
-        debugPrint("GET INVOICES STATUS:");
-        debugPrint(response.statusCode.toString());
-
-        debugPrint("GET INVOICES BODY:");
-        debugPrint(response.body);
+        debugPrint("GET INVOICES URL: $url");
+        debugPrint("GET INVOICES STATUS: ${response.statusCode}");
+        debugPrint("GET INVOICES BODY: ${response.body}");
 
         if (response.statusCode == 200) {
           final decoded = jsonDecode(response.body);
@@ -450,6 +846,10 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
 
       if (rawData == null && decoded["rental_bookings"] != null) {
         rawData = decoded["rental_bookings"];
+      }
+
+      if (rawData == null && decoded["history"] != null) {
+        rawData = decoded["history"];
       }
     } else {
       rawData = decoded;
@@ -509,6 +909,14 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     if (text.isEmpty || text == "null") return null;
 
     text = text.replaceAll("Rp", "").trim();
+
+    if (RegExp(r'^\d+\.\d{1,2}$').hasMatch(text)) {
+      return double.tryParse(text)?.round();
+    }
+
+    if (RegExp(r'^\d+,\d{1,2}$').hasMatch(text)) {
+      return double.tryParse(text.replaceAll(",", "."))?.round();
+    }
 
     if (RegExp(r',\d{1,2}$').hasMatch(text)) {
       text = text.split(',').first;
@@ -579,7 +987,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
       (match) => ".",
     );
 
-    return "Rp $result";
+    return "Rp$result";
   }
 
   String formatDate(dynamic value) {
@@ -611,121 +1019,63 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     return "${date.day} ${months[date.month - 1]} ${date.year}";
   }
 
-  Map<String, dynamic> getProperty(Map<String, dynamic> item) {
-    final property =
-        item["property"] ??
-        item["place_property"] ??
-        item["placeProperty"] ??
-        item["place_properties"] ??
-        item["placeProperties"] ??
-        item["place_property_data"] ??
-        item["property_data"] ??
-        item["place"] ??
-        item["kos"] ??
-        item["kost"];
+  String getDisplayRentalPeriod(Map<String, dynamic> item) {
+    final latestInvoice = getLatestInvoice(item);
 
-    if (property is Map) {
-      return Map<String, dynamic>.from(property);
-    }
+    final start =
+        latestInvoice?["period_start"] ??
+        latestInvoice?["periodStart"] ??
+        item["period_start"] ??
+        item["periodStart"] ??
+        item["start_date"];
 
-    final rentalBooking = item["rental_booking"] ?? item["rentalBooking"];
+    final end =
+        latestInvoice?["period_end"] ??
+        latestInvoice?["periodEnd"] ??
+        item["period_end"] ??
+        item["periodEnd"] ??
+        item["end_date"];
 
-    if (rentalBooking is Map) {
-      final nestedProperty =
-          rentalBooking["property"] ??
-          rentalBooking["place_property"] ??
-          rentalBooking["placeProperty"] ??
-          rentalBooking["place_properties"] ??
-          rentalBooking["placeProperties"] ??
-          rentalBooking["place_property_data"] ??
-          rentalBooking["property_data"] ??
-          rentalBooking["kos"] ??
-          rentalBooking["kost"];
-
-      if (nestedProperty is Map) {
-        return Map<String, dynamic>.from(nestedProperty);
-      }
-    }
-
-    return {};
+    return "${formatDate(start)} - ${formatDate(end)}";
   }
 
   String getPropertyName(Map<String, dynamic> item) {
     final historyName = item["_history_property_name"]?.toString().trim() ?? "";
+    final safeName = item["_safe_property_name"]?.toString().trim() ?? "";
 
-    if (historyName.isNotEmpty && historyName != "null") {
-      return historyName;
-    }
+    if (isValidKosText(historyName)) return historyName;
+    if (isValidKosText(safeName)) return safeName;
 
-    final property = getProperty(item);
+    final fixedName = getKosNameOnly(item);
 
-    final name =
-        property["title"] ??
-        property["property_name"] ??
-        property["nama_kos"] ??
-        property["nama_kost"] ??
-        property["kos_name"] ??
-        property["kost_name"] ??
-        property["place_name"] ??
-        property["name"] ??
-        property["nama"] ??
-        item["place_property_name"] ??
-        item["property_name"] ??
-        item["nama_kos"] ??
-        item["nama_kost"] ??
-        item["kos_name"] ??
-        item["kost_name"] ??
-        item["place_name"];
+    if (isValidKosText(fixedName)) return fixedName;
 
-    final text = name?.toString().trim() ?? "";
-
-    if (text.isEmpty || text == "null") {
-      return "Nama kos tidak tersedia";
-    }
-
-    return text;
+    return "Nama kos tidak tersedia";
   }
 
   String getPropertyAddress(Map<String, dynamic> item) {
     final historyAddress =
         item["_history_property_address"]?.toString().trim() ?? "";
+    final safeAddress = item["_safe_property_address"]?.toString().trim() ?? "";
 
-    if (historyAddress.isNotEmpty && historyAddress != "null") {
-      return historyAddress;
-    }
+    if (isValidKosText(historyAddress)) return historyAddress;
+    if (isValidKosText(safeAddress)) return safeAddress;
 
-    final property = getProperty(item);
+    final fixedAddress = getKosAddressOnly(item);
 
-    final address =
-        property["address"] ??
-        property["alamat"] ??
-        property["location"] ??
-        property["lokasi"] ??
-        property["full_address"] ??
-        property["alamat_lengkap"] ??
-        item["address"] ??
-        item["alamat"] ??
-        item["location"] ??
-        item["lokasi"] ??
-        item["full_address"] ??
-        item["alamat_lengkap"];
+    if (isValidKosText(fixedAddress)) return fixedAddress;
 
-    final text = address?.toString().trim() ?? "";
-
-    if (text.isEmpty || text == "null") {
-      return "Alamat belum tersedia";
-    }
-
-    return text;
+    return "Alamat belum tersedia";
   }
 
   String getStatusText(dynamic value) {
-    final status = value?.toString().toLowerCase() ?? "";
+    final status = value?.toString().toLowerCase().trim() ?? "";
 
     if (status == "pending") return "Menunggu";
     if (status == "pending_payment") return "Menunggu Pembayaran";
     if (status == "approved") return "Disetujui";
     if (status == "active") return "Aktif";
+    if (status == "grace") return "Grace";
     if (status == "rejected") return "Ditolak";
     if (status == "cancelled" || status == "canceled") return "Dibatalkan";
     if (status == "completed" || status == "finish") return "Selesai";
@@ -736,7 +1086,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
   }
 
   String getPaymentStatusText(dynamic value) {
-    final status = value?.toString().toLowerCase() ?? "";
+    final status = value?.toString().toLowerCase().trim() ?? "";
 
     if (status == "pending") return "Menunggu Konfirmasi";
     if (status == "waiting") return "Menunggu Konfirmasi";
@@ -746,10 +1096,11 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     if (status == "unpaid") return "Belum Dibayar";
     if (status == "partial") return "Sebagian";
     if (status == "paid") return "Lunas";
+    if (status == "lunas") return "Lunas";
     if (status == "approved") return "Disetujui";
     if (status == "active") return "Aktif";
-    if (status == "grace") return "Masa Tenggang";
-    if (status == "overdue") return "Terlambat";
+    if (status == "grace") return "Grace";
+    if (status == "overdue") return "Overdue";
     if (status == "rejected") return "Ditolak";
 
     if (status.isEmpty || status == "null") return "Belum diketahui";
@@ -763,6 +1114,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     if (status == "approved" ||
         status == "active" ||
         status == "paid" ||
+        status == "lunas" ||
         status == "completed" ||
         status == "finish") {
       return Colors.green;
@@ -870,6 +1222,76 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     });
 
     return payments;
+  }
+
+  String getPaymentProofUrlFromMap(
+    Map<String, dynamic> source, {
+    bool allowGenericImage = false,
+  }) {
+    final proofValue =
+        source["payment_proof"] ??
+        source["paymentProof"] ??
+        source["payment_proof_url"] ??
+        source["paymentProofUrl"] ??
+        source["proof_url"] ??
+        source["proofUrl"] ??
+        source["proof"] ??
+        source["proof_image"] ??
+        source["proofImage"] ??
+        source["bukti_pembayaran"] ??
+        source["buktiPembayaran"] ??
+        source["bukti_transfer"] ??
+        source["buktiTransfer"];
+
+    final proofUrl = getImageUrlFromValue(proofValue);
+
+    if (proofUrl.isNotEmpty) {
+      return proofUrl;
+    }
+
+    if (allowGenericImage) {
+      return getImageUrlFromValue(
+        source["image"] ??
+            source["photo"] ??
+            source["file"] ??
+            source["path"] ??
+            source["url"],
+      );
+    }
+
+    return "";
+  }
+
+  bool hasPaymentProof(Map<String, dynamic> payment) {
+    return getPaymentProofUrlFromMap(
+      payment,
+      allowGenericImage: true,
+    ).isNotEmpty;
+  }
+
+  List<Map<String, dynamic>> getPaymentsWithProof(Map<String, dynamic> item) {
+    return getPayments(item).where(hasPaymentProof).toList();
+  }
+
+  bool hasAnyPaymentProof(Map<String, dynamic> item) {
+    if (getPaymentProofUrlFromMap(item).isNotEmpty) {
+      return true;
+    }
+
+    final latestInvoice = getLatestInvoice(item);
+
+    if (latestInvoice != null &&
+        getPaymentProofUrlFromMap(latestInvoice).isNotEmpty) {
+      return true;
+    }
+
+    for (final invoice in getInvoices(item)) {
+      if (getPaymentProofUrlFromMap(invoice).isNotEmpty) {
+        return true;
+      }
+    }
+
+    return getPaymentsWithProof(item).isNotEmpty;
   }
 
   Map<String, dynamic>? getLatestPayment(Map<String, dynamic> item) {
@@ -1000,13 +1422,9 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     if (isPaidInvoiceStatus(status)) return false;
     if (amount <= 0) return false;
 
-    if (status == "overdue" || status == "terlambat") {
-      return true;
-    }
+    if (status == "overdue" || status == "terlambat") return true;
 
-    if (item != null && isGraceActive(item)) {
-      return false;
-    }
+    if (item != null && isGraceActive(item)) return false;
 
     final dueDate = getInvoiceDueDate(invoice);
 
@@ -1022,22 +1440,10 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     final status = invoice["status"]?.toString().toLowerCase().trim() ?? "";
     final amount = getInvoicePayableAmount(invoice);
 
-    debugPrint("CHECK INVOICE PAYABLE:");
-    debugPrint({
-      "invoice_id": invoice["id"],
-      "invoice_status": status,
-      "remaining_amount": invoice["remaining_amount"],
-      "amount": amount,
-      "is_overdue": isInvoiceOverdue(invoice, item: item),
-      "is_grace_active": item == null ? false : isGraceActive(item),
-    }.toString());
-
     if (isPaidInvoiceStatus(status)) return false;
     if (amount <= 0) return false;
 
-    if (item != null && isGraceActive(item)) {
-      return false;
-    }
+    if (item != null && isGraceActive(item)) return false;
 
     final payments =
         invoice["payments"] ??
@@ -1049,12 +1455,6 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
         if (paymentItem is Map) {
           final payment = Map<String, dynamic>.from(paymentItem);
           final paymentStatus = payment["status"];
-
-          debugPrint("CHECK PAYMENT STATUS IN INVOICE:");
-          debugPrint({
-            "payment_id": payment["id"],
-            "payment_status": paymentStatus,
-          }.toString());
 
           if (isPendingPaymentStatus(paymentStatus)) {
             return false;
@@ -1071,24 +1471,13 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     final paymentStatus = item["payment_status"];
     final latestPayment = getLatestPayment(item);
 
-    debugPrint("CHECK PAYABLE INVOICE FROM ITEM:");
-    debugPrint({
-      "booking_id": item["id"],
-      "booking_status": itemStatus,
-      "payment_status": paymentStatus,
-      "latest_payment_status": latestPayment?["status"],
-      "is_grace_active": isGraceActive(item),
-    }.toString());
-
     if (isPendingPaymentStatus(itemStatus) ||
         isPendingPaymentStatus(paymentStatus) ||
         isPendingPaymentStatus(latestPayment?["status"])) {
       return null;
     }
 
-    if (isGraceActive(item)) {
-      return null;
-    }
+    if (isGraceActive(item)) return null;
 
     final invoices = getInvoices(item);
 
@@ -1156,20 +1545,18 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
         isPendingPaymentStatus(latestPayment["status"])) {
       return latestPayment["status"];
     }
-
+  
+    if (isGraceActive(item)) return "grace";
+  
     if (latestInvoice != null && isInvoiceOverdue(latestInvoice, item: item)) {
       return "overdue";
     }
-
-    if (isGraceActive(item)) {
-      return "grace";
-    }
-
+  
     if (latestPayment != null &&
         isRejectedPaymentStatus(latestPayment["status"])) {
       return latestPayment["status"];
     }
-
+  
     return latestInvoice?["status"] ?? item["payment_status"] ?? item["status"];
   }
 
@@ -1246,22 +1633,14 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
           await http.MultipartFile.fromPath("payment_proof", proofFile.path),
         );
 
-        debugPrint("UPLOAD INVOICE PAYMENT URL:");
-        debugPrint(url);
-
-        debugPrint("UPLOAD INVOICE PAYMENT FIELDS:");
-        debugPrint(request.fields.toString());
-
         final streamedResponse = await request.send();
         final response = await http.Response.fromStream(streamedResponse);
 
         lastResponse = response;
 
-        debugPrint("UPLOAD INVOICE PAYMENT STATUS:");
-        debugPrint(response.statusCode.toString());
-
-        debugPrint("UPLOAD INVOICE PAYMENT BODY:");
-        debugPrint(response.body);
+        debugPrint("UPLOAD INVOICE PAYMENT URL: $url");
+        debugPrint("UPLOAD INVOICE PAYMENT STATUS: ${response.statusCode}");
+        debugPrint("UPLOAD INVOICE PAYMENT BODY: ${response.body}");
 
         if (response.statusCode == 200 || response.statusCode == 201) {
           showMessage("Bukti pembayaran invoice berhasil dikirim.");
@@ -1286,7 +1665,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
       showMessage(
         parseResponseMessage(
           lastResponse?.body ?? "",
-          "Route upload invoice payment belum cocok. Cek route api.php untuk InvoiceController@createPayment.",
+          "Route upload invoice payment belum cocok.",
         ),
       );
 
@@ -1353,13 +1732,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
   }
 
   String getPaymentProofUrl(Map<String, dynamic> payment) {
-    return getImageUrlFromValue(
-      payment["payment_proof"] ??
-          payment["proof_url"] ??
-          payment["payment_proof_url"] ??
-          payment["proof"] ??
-          payment["image"],
-    );
+    return getPaymentProofUrlFromMap(payment, allowGenericImage: true);
   }
 
   Future<void> showProofImage(Map<String, dynamic> payment) async {
@@ -1672,15 +2045,12 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     final latestInvoice = getLatestInvoice(item);
     final latestPayment = getLatestPayment(item);
     final payableInvoice = getPayableInvoice(item);
-    final payments = getPayments(item);
+    final payments = getPaymentsWithProof(item);
 
     final invoiceStatusText = latestInvoice == null
         ? "-"
         : getPaymentStatusText(
-            getInvoiceEffectiveStatus(
-              latestInvoice,
-              item: item,
-            ),
+            getInvoiceEffectiveStatus(latestInvoice, item: item),
           );
 
     final paymentStatusText = getPaymentStatusText(
@@ -1745,8 +2115,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
                     buildDetailInfo(
                       icon: Icons.calendar_month_rounded,
                       title: "Tanggal Sewa",
-                      value:
-                          "${formatDate(item["start_date"])} - ${formatDate(item["end_date"])}",
+                      value: getDisplayRentalPeriod(item),
                     ),
                     buildDetailInfo(
                       icon: Icons.payments_rounded,
@@ -1763,7 +2132,9 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
                       title: "Status Pembayaran",
                       value: paymentStatusText,
                     ),
+                    buildFamilyCodeBox(item),
                     if (latestInvoice != null) ...[
+                      const SizedBox(height: 12),
                       buildDetailInfo(
                         icon: Icons.receipt_long_rounded,
                         title: "Invoice Terakhir",
@@ -1809,20 +2180,185 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     );
   }
 
+  Widget buildFamilyCodeBox(Map<String, dynamic> item) {
+    final rentalBookingId = getRentalBookingId(item);
+
+    if (rentalBookingId <= 0) {
+      return const SizedBox.shrink();
+    }
+
+    final isPaid = isHistoryPaidForFamilyCode(item);
+
+    if (!isPaid) {
+      return const SizedBox.shrink();
+    }
+
+    final isGenerating = generatingFamilyCodeRentalIds.contains(
+      rentalBookingId,
+    );
+
+    final familyCodeData = familyCodesByRentalId[rentalBookingId];
+
+    if (isGenerating && familyCodeData == null) {
+      return Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 10, bottom: 2),
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: primaryColor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: primaryColor,
+              ),
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Sedang membuat kode family...",
+                style: TextStyle(
+                  color: primaryColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (familyCodeData == null) {
+      return GestureDetector(
+        onTap: () {
+          generateFamilyCodeForItem(item, showUserMessage: true);
+        },
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 10, bottom: 2),
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: Colors.orange.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.orange.withOpacity(0.25)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: Colors.orange, size: 19),
+              SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  "Status sudah lunas. Tap untuk buat kode family.",
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Icon(Icons.refresh_rounded, color: Colors.orange, size: 18),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final code = familyCodeData["code"]?.toString() ?? "-";
+    final expiredAt = familyCodeData["expired_at"];
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10, bottom: 2),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.green.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.green.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.family_restroom_rounded,
+              color: Colors.green,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Kode Family",
+                  style: TextStyle(
+                    color: Colors.black54,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  code,
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.7,
+                  ),
+                ),
+                if (expiredAt != null)
+                  Text(
+                    "Expired: ${formatDate(expiredAt)}",
+                    style: const TextStyle(
+                      color: Colors.black45,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: code));
+
+              showMessage("Kode family berhasil disalin.");
+            },
+            icon: const Icon(Icons.copy_rounded, color: Colors.green),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget buildInvoicePaymentButton({
     required Map<String, dynamic> item,
     required Map<String, dynamic> invoice,
   }) {
     final latestPayment = getLatestPayment(item);
     final isOverdue = isInvoiceOverdue(invoice, item: item);
-    final isRejected = latestPayment != null &&
+    final isRejected =
+        latestPayment != null &&
         isRejectedPaymentStatus(latestPayment["status"]);
 
     final title = isOverdue
         ? "Invoice Overdue"
         : isRejected
-            ? "Bukti Ditolak"
-            : "Invoice yang harus dibayar";
+        ? "Bukti Ditolak"
+        : "Invoice yang harus dibayar";
 
     final buttonText = isOverdue || isRejected
         ? "Kirim Bukti Pembayaran Baru"
@@ -2438,7 +2974,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      "${formatDate(item["start_date"])} - ${formatDate(item["end_date"])}",
+                      getDisplayRentalPeriod(item),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -2506,6 +3042,7 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
                   ],
                 ),
               ),
+              buildFamilyCodeBox(item),
               if (payableInvoice != null) ...[
                 const SizedBox(height: 10),
                 Row(

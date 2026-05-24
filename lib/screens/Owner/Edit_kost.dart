@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:koskaki/service/api_service.dart';
 
 class EditKostPage extends StatefulWidget {
@@ -55,6 +59,20 @@ class _EditKostPageState extends State<EditKostPage> {
 
   bool isNearbyLoading = false;
 
+  bool isCityLoading = false;
+  List<Map<String, dynamic>> cities = [];
+  int? selectedCityId;
+
+  bool isLoadingPlaces = false;
+  List<Map<String, dynamic>> places = [];
+  Map<String, dynamic>? selectedNearbyPlace;
+  final TextEditingController nearbyDistanceController =
+      TextEditingController();
+
+  List<Map<String, dynamic>> existingImages = [];
+  List<Map<String, dynamic>> removedExistingImages = [];
+  List<File> newImages = [];
+
   final List<String> kostFeatureOptions = [
     "WiFi",
     "CCTV",
@@ -84,6 +102,10 @@ class _EditKostPageState extends State<EditKostPage> {
 
     final k = widget.kost;
 
+    selectedCityId = getInitialCityId(k);
+    existingImages = extractExistingImageList(k);
+    loadCities();
+
     titleC = TextEditingController(text: k['title']?.toString() ?? '');
 
     descC = TextEditingController(text: k['description']?.toString() ?? '');
@@ -93,19 +115,47 @@ class _EditKostPageState extends State<EditKostPage> {
     maxPeopleC = TextEditingController(text: k['max_people']?.toString() ?? '');
 
     nightC = TextEditingController(
-      text: formatNumber(k['price_perNight'] ?? k['price_per_night']),
+      text: formatNumber(
+        getInitialPriceValue([
+          'price_perNight',
+          'price_per_night',
+          'night_price',
+          'price_night',
+        ]),
+      ),
     );
 
     weekC = TextEditingController(
-      text: formatNumber(k['price_perWeek'] ?? k['price_per_week']),
+      text: formatNumber(
+        getInitialPriceValue([
+          'price_perWeek',
+          'price_per_week',
+          'week_price',
+          'price_week',
+        ]),
+      ),
     );
 
     monthC = TextEditingController(
-      text: formatNumber(k['price_perMonth'] ?? k['price_per_month']),
+      text: formatNumber(
+        getInitialPriceValue([
+          'price_perMonth',
+          'price_per_month',
+          'month_price',
+          'price_month',
+        ]),
+      ),
     );
 
     yearC = TextEditingController(
-      text: formatNumber(k['price_perYear'] ?? k['price_per_year']),
+      text: formatNumber(
+        getInitialPriceValue([
+          'price_perYear',
+          'price_per_year',
+          'year_price',
+          'price_year',
+        ]),
+      ),
     );
 
     originalKostFeatureObjects = _parseObjectList(
@@ -180,9 +230,14 @@ class _EditKostPageState extends State<EditKostPage> {
         .toList();
 
     selectedNearbyPlaces = removeDuplicateNearbyPlaces(selectedNearbyPlaces);
+    syncNearbyDropdownFromSelectedList(force: true);
 
     fetchNearbyPlaceOptions();
     fetchCurrentNearbyPlaces();
+
+    if (selectedCityId != null) {
+      loadPlacesByCity(selectedCityId!, keepSelected: true);
+    }
   }
 
   @override
@@ -196,6 +251,7 @@ class _EditKostPageState extends State<EditKostPage> {
     weekC.dispose();
     monthC.dispose();
     yearC.dispose();
+    nearbyDistanceController.dispose();
 
     for (final item in kostPolicies) {
       (item["titleC"] as TextEditingController?)?.dispose();
@@ -210,12 +266,666 @@ class _EditKostPageState extends State<EditKostPage> {
     super.dispose();
   }
 
+  int? getInitialCityId(Map<String, dynamic> source) {
+    final direct =
+        source['city_id'] ??
+        source['cityId'] ??
+        source['id_city'] ??
+        source['kota_id'];
+
+    final fromDirect = parseNullableInt(direct);
+
+    if (fromDirect != null) return fromDirect;
+
+    final city = source['city'] ?? source['kota'];
+
+    if (city is Map) {
+      return parseNullableInt(city['id']);
+    }
+
+    return null;
+  }
+
+  int? parseNullableInt(dynamic value) {
+    if (value == null) return null;
+
+    final text = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (text.isEmpty) return null;
+
+    return int.tryParse(text);
+  }
+
+  Future<void> loadCities() async {
+    try {
+      if (mounted) {
+        setState(() {
+          isCityLoading = true;
+        });
+      }
+
+      final response = await http.get(
+        Uri.parse("${ApiService.baseUrl}/cities"),
+        headers: const {'Accept': 'application/json'},
+      );
+
+      print("EDIT CITY STATUS:");
+      print(response.statusCode);
+
+      print("EDIT CITY BODY:");
+      print(response.body);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+
+        List<dynamic> cityData = [];
+
+        if (decoded is List) {
+          cityData = decoded;
+        } else if (decoded is Map && decoded['data'] is List) {
+          cityData = decoded['data'];
+        } else if (decoded is Map &&
+            decoded['data'] is Map &&
+            decoded['data']['data'] is List) {
+          cityData = decoded['data']['data'];
+        }
+
+        if (!mounted) return;
+
+        setState(() {
+          cities = cityData.map<Map<String, dynamic>>((item) {
+            return Map<String, dynamic>.from(item);
+          }).toList();
+        });
+      } else {
+        showMessage("Gagal mengambil data kota");
+      }
+    } catch (e) {
+      print("EDIT LOAD CITY ERROR:");
+      print(e);
+      showMessage("Error mengambil kota: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          isCityLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> loadPlacesByCity(int cityId, {bool keepSelected = false}) async {
+    if (!mounted) return;
+
+    final previousSelectedId = cleanTextValue(
+      selectedNearbyPlace?['id'] ??
+          (selectedNearbyPlaces.isNotEmpty
+              ? selectedNearbyPlaces.first['id']
+              : null),
+    );
+
+    setState(() {
+      isLoadingPlaces = true;
+      places = [];
+
+      if (!keepSelected) {
+        selectedNearbyPlace = null;
+        nearbyDistanceController.clear();
+        selectedNearbyPlaces = [];
+      }
+    });
+
+    try {
+      final response = await http.get(
+        Uri.parse("${ApiService.baseUrl}/cities/$cityId/places"),
+        headers: const {'Accept': 'application/json'},
+      );
+
+      print("EDIT PLACES BY CITY STATUS:");
+      print(response.statusCode);
+
+      print("EDIT PLACES BY CITY BODY:");
+      print(response.body);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+
+        List<dynamic> placeData = [];
+
+        if (decoded is List) {
+          placeData = decoded;
+        } else if (decoded is Map && decoded['data'] is List) {
+          placeData = decoded['data'];
+        } else if (decoded is Map &&
+            decoded['data'] is Map &&
+            decoded['data']['data'] is List) {
+          placeData = decoded['data']['data'];
+        } else {
+          placeData = parseNearbyPlaceList(decoded);
+        }
+
+        final parsedPlaces = placeData
+            .map<Map<String, dynamic>>((item) {
+              if (item is Map) {
+                return nearbyToSelectedMap(Map<String, dynamic>.from(item));
+              }
+
+              return {
+                "id": "",
+                "name": item.toString(),
+                "type": "",
+                "distance": "",
+              };
+            })
+            .where((item) => cleanTextValue(item['id']).isNotEmpty)
+            .toList();
+
+        if (!mounted) return;
+
+        setState(() {
+          places = removeDuplicateNearbyPlaces(parsedPlaces);
+
+          if (keepSelected && previousSelectedId.isNotEmpty) {
+            Map<String, dynamic>? matched;
+
+            for (final item in places) {
+              if (cleanTextValue(item['id']) == previousSelectedId) {
+                matched = item;
+                break;
+              }
+            }
+
+            if (matched != null) {
+              final oldDistance = selectedNearbyPlaces.isNotEmpty
+                  ? normalizeDistanceValue(
+                      selectedNearbyPlaces.first['distance'],
+                    )
+                  : normalizeDistanceValue(nearbyDistanceController.text);
+
+              selectedNearbyPlace = Map<String, dynamic>.from(matched);
+
+              if (oldDistance.isNotEmpty) {
+                nearbyDistanceController.text = oldDistance;
+              }
+            }
+          }
+        });
+      } else {
+        showMessage("Gagal mengambil data tempat");
+      }
+    } catch (e) {
+      print("EDIT LOAD PLACES ERROR:");
+      print(e);
+      showMessage("Error mengambil tempat: $e");
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      isLoadingPlaces = false;
+    });
+  }
+
+  String cleanDistance(String value) {
+    String result = value
+        .replaceAll(',', '.')
+        .replaceAll(RegExp(r'[^0-9.]'), '');
+
+    final parts = result.split('.');
+
+    if (parts.length > 2) {
+      result = '${parts.first}.${parts.skip(1).join()}';
+    }
+
+    return result;
+  }
+
+  String getPlaceName(Map<String, dynamic> item) {
+    return item['name']?.toString() ??
+        item['title']?.toString() ??
+        item['place_name']?.toString() ??
+        item['nama']?.toString() ??
+        "-";
+  }
+
+  String getPlaceType(Map<String, dynamic> item) {
+    return item['type']?.toString() ??
+        item['category']?.toString() ??
+        item['place_type']?.toString() ??
+        item['kategori']?.toString() ??
+        "";
+  }
+
+  void syncNearbyDropdownFromSelectedList({bool force = false}) {
+    if (selectedNearbyPlaces.isEmpty) {
+      if (force) {
+        selectedNearbyPlace = null;
+        nearbyDistanceController.clear();
+      }
+
+      return;
+    }
+
+    final first = selectedNearbyPlaces.first;
+    final id = cleanTextValue(first['id']);
+    final distance = normalizeDistanceValue(first['distance']);
+
+    Map<String, dynamic>? matched;
+
+    for (final place in places) {
+      if (cleanTextValue(place['id']) == id) {
+        matched = place;
+        break;
+      }
+    }
+
+    if (force || selectedNearbyPlace == null) {
+      selectedNearbyPlace = Map<String, dynamic>.from(matched ?? first);
+    }
+
+    nearbyDistanceController.text = distance;
+  }
+
+  void syncSingleNearbySelection() {
+    final place = selectedNearbyPlace;
+    final distance = cleanDistance(nearbyDistanceController.text.trim());
+
+    if (place == null) {
+      selectedNearbyPlaces = [];
+      return;
+    }
+
+    final placeId = cleanTextValue(place['id']);
+
+    if (placeId.isEmpty) {
+      selectedNearbyPlaces = [];
+      return;
+    }
+
+    selectedNearbyPlaces = [
+      {
+        "id": placeId,
+        "name": getPlaceName(place),
+        "type": getPlaceType(place),
+        "distance": distance,
+      },
+    ];
+  }
+
+  List<Map<String, dynamic>> extractExistingImageList(
+    Map<String, dynamic> source,
+  ) {
+    final List<Map<String, dynamic>> result = [];
+
+    void addImage(dynamic value, {bool isMain = false}) {
+      if (value == null) return;
+
+      if (value is Map) {
+        final map = Map<String, dynamic>.from(value);
+        final url = getImageUrlFromDynamic(map);
+
+        if (url.trim().isEmpty) return;
+
+        final image = {
+          "id":
+              map['id'] ??
+              map['image_id'] ??
+              map['property_image_id'] ??
+              map['kost_image_id'],
+          "url": url,
+          "raw": map,
+          "is_main": isMain,
+        };
+
+        result.add(image);
+        return;
+      }
+
+      final url = getImageUrlFromDynamic(value);
+
+      if (url.trim().isEmpty) return;
+
+      result.add({"id": null, "url": url, "raw": value, "is_main": isMain});
+    }
+
+    addImage(source['main_image'], isMain: true);
+    addImage(source['image'], isMain: result.isEmpty);
+    addImage(source['thumbnail'], isMain: false);
+
+    final imageSources = [
+      source['images'],
+      source['property_images'],
+      source['kost_images'],
+      source['photos'],
+    ];
+
+    for (final item in imageSources) {
+      if (item is List) {
+        for (final image in item) {
+          addImage(image);
+        }
+      }
+    }
+
+    final List<Map<String, dynamic>> unique = [];
+    final Set<String> keys = {};
+
+    for (final image in result) {
+      final id = cleanTextValue(image['id']);
+      final url = cleanTextValue(image['url']);
+      final key = id.isNotEmpty ? "id:$id" : "url:$url";
+
+      if (url.isEmpty || keys.contains(key)) continue;
+
+      keys.add(key);
+      unique.add(image);
+    }
+
+    return unique.take(15).toList();
+  }
+
+  String getImageUrlFromDynamic(dynamic img) {
+    String url = "";
+
+    final baseUrlWithoutApi = ApiService.baseUrl.replaceFirst(
+      RegExp(r'/api/?$'),
+      '',
+    );
+
+    if (img == null) return "";
+
+    if (img is String) {
+      url = img;
+    } else if (img is Map) {
+      final map = Map<String, dynamic>.from(img);
+
+      final fullImageUrl = map['full_image_url']?.toString() ?? "";
+
+      if (fullImageUrl.isNotEmpty &&
+          fullImageUrl.startsWith("http") &&
+          !fullImageUrl.endsWith("/storage")) {
+        url = fullImageUrl;
+      } else {
+        url =
+            map['url']?.toString() ??
+            map['image']?.toString() ??
+            map['image_url']?.toString() ??
+            map['path']?.toString() ??
+            map['image_path']?.toString() ??
+            map['file']?.toString() ??
+            map['filename']?.toString() ??
+            "";
+      }
+    }
+
+    if (url.isEmpty || url == "null") return "";
+
+    url = url.replaceAll('\\\\', '/');
+
+    if (url.startsWith("http")) return url;
+
+    if (url.startsWith("/storage")) {
+      return "$baseUrlWithoutApi$url";
+    }
+
+    if (url.startsWith("storage")) {
+      return "$baseUrlWithoutApi/$url";
+    }
+
+    return "$baseUrlWithoutApi/storage/$url";
+  }
+
+  Future<void> pickImage() async {
+    try {
+      final pickedImages = await ImagePicker().pickMultiImage();
+
+      if (pickedImages.isEmpty) return;
+
+      final totalImage =
+          existingImages.length + newImages.length + pickedImages.length;
+
+      if (totalImage > 15) {
+        showMessage("Maksimal 15 gambar");
+        return;
+      }
+
+      final List<File> compressedImages = [];
+
+      for (final picked in pickedImages) {
+        final compressed = await FlutterImageCompress.compressAndGetFile(
+          picked.path,
+          "${picked.path}_compressed.jpg",
+          quality: 60,
+        );
+
+        if (compressed != null) {
+          compressedImages.add(File(compressed.path));
+        } else {
+          compressedImages.add(File(picked.path));
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        newImages.addAll(compressedImages);
+      });
+    } catch (e) {
+      print("PICK EDIT IMAGE ERROR:");
+      print(e);
+      showMessage("Gagal memilih gambar: $e");
+    }
+  }
+
+  void removeExistingImage(int index) {
+    if (index < 0 || index >= existingImages.length) return;
+
+    setState(() {
+      final removed = existingImages.removeAt(index);
+      removedExistingImages.add(removed);
+    });
+  }
+
+  void removeNewImage(int index) {
+    if (index < 0 || index >= newImages.length) return;
+
+    setState(() {
+      newImages.removeAt(index);
+    });
+  }
+
+  List<String> removedImageIds() {
+    return removedExistingImages
+        .map((item) => cleanTextValue(item['id']))
+        .where((id) => id.isNotEmpty)
+        .toList();
+  }
+
+  Future<bool> deleteRemovedExistingImages({
+    required String propertyId,
+    required String token,
+  }) async {
+    final ids = removedImageIds();
+
+    if (ids.isEmpty) return true;
+
+    bool success = true;
+
+    for (final imageId in ids) {
+      final endpoints = [
+        "${ApiService.baseUrl}/properties/$propertyId/images/$imageId",
+        "${ApiService.baseUrl}/property-images/$imageId",
+        "${ApiService.baseUrl}/images/$imageId",
+      ];
+
+      bool deleted = false;
+
+      for (final endpoint in endpoints) {
+        try {
+          final response = await http.delete(
+            Uri.parse(endpoint),
+            headers: {
+              "Authorization": "Bearer $token",
+              "Accept": "application/json",
+            },
+          );
+
+          print("DELETE EDIT IMAGE ENDPOINT:");
+          print(endpoint);
+          print("DELETE EDIT IMAGE STATUS:");
+          print(response.statusCode);
+          print("DELETE EDIT IMAGE BODY:");
+          print(response.body);
+
+          if (isSuccessStatus(response.statusCode)) {
+            deleted = true;
+            break;
+          }
+        } catch (e) {
+          print("DELETE EDIT IMAGE ERROR:");
+          print(endpoint);
+          print(e);
+        }
+      }
+
+      if (!deleted) success = false;
+    }
+
+    return success;
+  }
+
+  Future<bool> uploadNewImages({
+    required String propertyId,
+    required String token,
+  }) async {
+    if (newImages.isEmpty) return true;
+
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/images"),
+      );
+
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+        'Accept': 'application/json',
+      });
+
+      for (final image in newImages) {
+        request.files.add(
+          await http.MultipartFile.fromPath('images[]', image.path),
+        );
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print("UPLOAD EDIT IMAGE STATUS:");
+      print(response.statusCode);
+      print("UPLOAD EDIT IMAGE BODY:");
+      print(response.body);
+
+      if (isSuccessStatus(response.statusCode)) {
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      print("UPLOAD EDIT IMAGE ERROR:");
+      print(e);
+      return false;
+    }
+  }
+
+  dynamic getInitialPriceValue(List<String> keys) {
+    final k = widget.kost;
+
+    final fromMain = findFirstValueFromMap(k, keys);
+
+    if (fromMain != null) return fromMain;
+
+    final nestedKeys = [
+      'place_property',
+      'placeProperty',
+      'place_properties',
+      'placeProperties',
+      'places',
+      'place',
+      'room',
+      'rooms',
+    ];
+
+    for (final nestedKey in nestedKeys) {
+      final nestedValue = k[nestedKey];
+      final found = findFirstValueDeep(nestedValue, keys);
+
+      if (found != null) return found;
+    }
+
+    return 0;
+  }
+
+  dynamic findFirstValueFromMap(Map<dynamic, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      if (map.containsKey(key) && map[key] != null) {
+        return map[key];
+      }
+    }
+
+    return null;
+  }
+
+  dynamic findFirstValueDeep(dynamic source, List<String> keys) {
+    if (source == null) return null;
+
+    if (source is Map) {
+      final direct = findFirstValueFromMap(source, keys);
+
+      if (direct != null) return direct;
+
+      for (final value in source.values) {
+        final found = findFirstValueDeep(value, keys);
+
+        if (found != null) return found;
+      }
+    }
+
+    if (source is List) {
+      for (final item in source) {
+        final found = findFirstValueDeep(item, keys);
+
+        if (found != null) return found;
+      }
+    }
+
+    return null;
+  }
+
+  String normalizePriceValue(dynamic value) {
+    if (value == null) return "0";
+
+    String text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return "0";
+
+    text = text.replaceAll("Rp", "").replaceAll(" ", "");
+
+    // Kalau backend mengirim decimal seperti 1000000.00,
+    // angka di belakang titik tidak boleh ikut menjadi 100000000.
+    if (RegExp(r'^\d+[\.,]\d{1,2}$').hasMatch(text)) {
+      text = text.split(RegExp(r'[\.,]')).first;
+    }
+
+    final digits = text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.isEmpty) return "0";
+
+    return (int.tryParse(digits) ?? 0).toString();
+  }
+
   String formatNumber(dynamic value) {
-    if (value == null) return "";
+    final number = normalizePriceValue(value);
 
-    String number = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
-
-    if (number.isEmpty) return "";
+    if (number == "0") return "0";
 
     final buffer = StringBuffer();
 
@@ -235,7 +945,154 @@ class _EditKostPageState extends State<EditKostPage> {
   }
 
   String cleanPrice(String value) {
-    return value.replaceAll(RegExp(r'[^0-9]'), '');
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (digits.isEmpty) return "0";
+
+    return (int.tryParse(digits) ?? 0).toString();
+  }
+
+  Map<String, String> buildPricePayload() {
+    final nightPrice = cleanPrice(nightC.text);
+    final weekPrice = cleanPrice(weekC.text);
+    final monthPrice = cleanPrice(monthC.text);
+    final yearPrice = cleanPrice(yearC.text);
+
+    return {
+      "price_perNight": nightPrice,
+      "price_perWeek": weekPrice,
+      "price_perMonth": monthPrice,
+      "price_perYear": yearPrice,
+
+      "price_per_night": nightPrice,
+      "price_per_week": weekPrice,
+      "price_per_month": monthPrice,
+      "price_per_year": yearPrice,
+
+      "night_price": nightPrice,
+      "week_price": weekPrice,
+      "month_price": monthPrice,
+      "year_price": yearPrice,
+    };
+  }
+
+  bool isSuccessStatus(int statusCode) {
+    return statusCode == 200 || statusCode == 201 || statusCode == 204;
+  }
+
+  Future<bool> sendPriceRequest({
+    required String endpoint,
+    required String token,
+    required Map<String, String> priceBody,
+  }) async {
+    final jsonHeaders = {
+      "Authorization": "Bearer $token",
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    };
+
+    final formHeaders = {
+      "Authorization": "Bearer $token",
+      "Accept": "application/json",
+    };
+
+    try {
+      final putJson = await http.put(
+        Uri.parse(endpoint),
+        headers: jsonHeaders,
+        body: jsonEncode(priceBody),
+      );
+
+      print("UPDATE HARGA PUT JSON ENDPOINT:");
+      print(endpoint);
+      print("UPDATE HARGA PUT JSON STATUS:");
+      print(putJson.statusCode);
+      print("UPDATE HARGA PUT JSON RESPONSE:");
+      print(putJson.body);
+
+      if (isSuccessStatus(putJson.statusCode)) return true;
+
+      final patchJson = await http.patch(
+        Uri.parse(endpoint),
+        headers: jsonHeaders,
+        body: jsonEncode(priceBody),
+      );
+
+      print("UPDATE HARGA PATCH JSON ENDPOINT:");
+      print(endpoint);
+      print("UPDATE HARGA PATCH JSON STATUS:");
+      print(patchJson.statusCode);
+      print("UPDATE HARGA PATCH JSON RESPONSE:");
+      print(patchJson.body);
+
+      if (isSuccessStatus(patchJson.statusCode)) return true;
+
+      final postPutForm = await http.post(
+        Uri.parse(endpoint),
+        headers: formHeaders,
+        body: {"_method": "PUT", ...priceBody},
+      );
+
+      print("UPDATE HARGA POST _METHOD PUT ENDPOINT:");
+      print(endpoint);
+      print("UPDATE HARGA POST _METHOD PUT STATUS:");
+      print(postPutForm.statusCode);
+      print("UPDATE HARGA POST _METHOD PUT RESPONSE:");
+      print(postPutForm.body);
+
+      if (isSuccessStatus(postPutForm.statusCode)) return true;
+
+      final postPatchForm = await http.post(
+        Uri.parse(endpoint),
+        headers: formHeaders,
+        body: {"_method": "PATCH", ...priceBody},
+      );
+
+      print("UPDATE HARGA POST _METHOD PATCH ENDPOINT:");
+      print(endpoint);
+      print("UPDATE HARGA POST _METHOD PATCH STATUS:");
+      print(postPatchForm.statusCode);
+      print("UPDATE HARGA POST _METHOD PATCH RESPONSE:");
+      print(postPatchForm.body);
+
+      if (isSuccessStatus(postPatchForm.statusCode)) return true;
+    } catch (e) {
+      print("UPDATE HARGA ERROR ENDPOINT:");
+      print(endpoint);
+      print(e);
+    }
+
+    return false;
+  }
+
+  Future<bool> updatePriceWithoutChangingBackend({
+    required String propertyId,
+    required String placeId,
+    required String token,
+    required Map<String, String> priceBody,
+  }) async {
+    final endpoints = <String>{
+      "${ApiService.baseUrl}/properties/$propertyId",
+      "${ApiService.baseUrl}/properties/$propertyId/place-properties/$placeId",
+      "${ApiService.baseUrl}/place-properties/$placeId",
+      "${ApiService.baseUrl}/places/$placeId",
+    }.toList();
+
+    bool success = false;
+
+    for (final endpoint in endpoints) {
+      final updated = await sendPriceRequest(
+        endpoint: endpoint,
+        token: token,
+        priceBody: priceBody,
+      );
+
+      if (updated) {
+        success = true;
+      }
+    }
+
+    return success;
   }
 
   List<Map<String, dynamic>> _parseObjectList(dynamic value) {
@@ -454,26 +1311,40 @@ class _EditKostPageState extends State<EditKostPage> {
     final k = widget.kost;
 
     final possible =
-        k['place_id'] ?? k['place_property_id'] ?? k['place_properties_id'];
+        k['place_id'] ??
+        k['place_property_id'] ??
+        k['place_properties_id'] ??
+        k['placePropertyId'] ??
+        k['placePropertiesId'];
 
     if (possible != null) {
       return possible.toString();
     }
 
-    if (k['place_properties'] is List &&
-        (k['place_properties'] as List).isNotEmpty) {
-      final first = (k['place_properties'] as List).first;
+    final nestedKeys = [
+      'place_property',
+      'placeProperty',
+      'place_properties',
+      'placeProperties',
+      'places',
+      'place',
+      'room',
+      'rooms',
+    ];
 
-      if (first is Map && first['id'] != null) {
-        return first['id'].toString();
+    for (final key in nestedKeys) {
+      final value = k[key];
+
+      if (value is Map && value['id'] != null) {
+        return value['id'].toString();
       }
-    }
 
-    if (k['places'] is List && (k['places'] as List).isNotEmpty) {
-      final first = (k['places'] as List).first;
+      if (value is List && value.isNotEmpty) {
+        final first = value.first;
 
-      if (first is Map && first['id'] != null) {
-        return first['id'].toString();
+        if (first is Map && first['id'] != null) {
+          return first['id'].toString();
+        }
       }
     }
 
@@ -737,6 +1608,7 @@ class _EditKostPageState extends State<EditKostPage> {
         setState(() {
           originalNearbyPlaceObjects = parsedRaw;
           selectedNearbyPlaces = removeDuplicateNearbyPlaces(parsed);
+          syncNearbyDropdownFromSelectedList(force: true);
         });
       }
     } catch (e) {
@@ -924,71 +1796,40 @@ class _EditKostPageState extends State<EditKostPage> {
     required String propertyId,
     required String token,
   }) async {
-    final originalSelected = originalNearbyPlaceObjects
-        .map(nearbyToSelectedMap)
-        .where((item) => cleanTextValue(item['id']).isNotEmpty)
-        .toList();
-
-    final currentIds = selectedNearbyPlaces
-        .map((item) => cleanTextValue(item['id']))
-        .where((id) => id.isNotEmpty)
-        .toList();
-
-    for (final original in originalSelected) {
-      final originalId = cleanTextValue(original['id']);
-
-      if (originalId.isEmpty) continue;
-
-      if (!currentIds.contains(originalId)) {
-        await deleteNearbyPlace(
-          propertyId: propertyId,
-          token: token,
-          nearbyPlaceId: originalId,
-        );
+    try {
+      final List<Map<String, dynamic>> places = [];
+  
+      if (selectedNearbyPlace != null) {
+        final placeId = selectedNearbyPlace!['id'];
+        final distanceText = nearbyDistanceController.text.trim();
+  
+        if (placeId != null && distanceText.isNotEmpty) {
+          places.add({
+            "place_id": placeId,
+            "distance": distanceText.replaceAll(',', '.'),
+          });
+        }
       }
-    }
-
-    for (final selected in selectedNearbyPlaces) {
-      final id = cleanTextValue(selected['id']);
-
-      if (id.isEmpty) continue;
-
-      final original = findOriginalNearbyById(id);
-
-      if (original == null) {
-        await addNearbyPlace(
-          propertyId: propertyId,
-          token: token,
-          item: selected,
-        );
-
-        continue;
-      }
-
-      final oldDistance = normalizeDistanceValue(original['distance']);
-      final newDistance = normalizeDistanceValue(selected['distance']);
-
-      if (oldDistance == newDistance) continue;
-
-      final updated = await updateNearbyPlace(
-        propertyId: propertyId,
-        token: token,
-        item: selected,
+  
+      final body = {
+        "places": places,
+      };
+  
+      final response = await http.put(
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/nearby-places"),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode(body),
       );
-
-      if (!updated) {
-        await deleteNearbyPlace(
-          propertyId: propertyId,
-          token: token,
-          nearbyPlaceId: id,
-        );
-
-        await addNearbyPlace(
-          propertyId: propertyId,
-          token: token,
-          item: selected,
-        );
-      }
+  
+      debugPrint("EDIT NEARBY BODY: $body");
+      debugPrint("EDIT NEARBY STATUS: ${response.statusCode}");
+      debugPrint("EDIT NEARBY RESPONSE: ${response.body}");
+    } catch (e) {
+      debugPrint("EDIT NEARBY ERROR: $e");
     }
   }
 
@@ -1283,21 +2124,32 @@ class _EditKostPageState extends State<EditKostPage> {
       }
 
       final propertyId = widget.kost['id'].toString();
+      final placeId = getPlaceId();
 
       final kostRulesJson = jsonEncode(buildPolicyPayload(kostPolicies));
 
       final roomRulesJson = jsonEncode(buildPolicyPayload(roomPolicies));
 
-      final body = {
-        "title": titleC.text,
-        "description": descC.text,
-        "address": addressC.text,
-        "max_people": maxPeopleC.text,
+      final priceBody = buildPricePayload();
 
-        "price_perNight": cleanPrice(nightC.text),
-        "price_perWeek": cleanPrice(weekC.text),
-        "price_perMonth": cleanPrice(monthC.text),
-        "price_perYear": cleanPrice(yearC.text),
+      syncSingleNearbySelection();
+
+      final body = {
+        "title": titleC.text.trim(),
+        "description": descC.text.trim(),
+        "address": addressC.text.trim(),
+        "max_people": maxPeopleC.text.trim(),
+        if (selectedCityId != null) "city_id": selectedCityId.toString(),
+
+        "deleted_image_ids": removedImageIds(),
+        "delete_image_ids": removedImageIds(),
+        "removed_image_ids": removedImageIds(),
+
+        "place_id": placeId,
+        "place_property_id": placeId,
+        "place_properties_id": placeId,
+
+        ...priceBody,
 
         "kost_facilities": selectedListToDatabaseString(kostFeatures),
         "room_facilities": selectedListToDatabaseString(roomFeatures),
@@ -1314,10 +2166,10 @@ class _EditKostPageState extends State<EditKostPage> {
         "property_nearby_places": buildNearbyPlacesPayload(),
       };
 
-      print("UPDATE BODY:");
+      print("UPDATE BODY UTAMA:");
       print(body);
 
-      final res = await http.put(
+      http.Response res = await http.put(
         Uri.parse("${ApiService.baseUrl}/properties/$propertyId"),
         headers: {
           "Authorization": "Bearer $token",
@@ -1327,13 +2179,44 @@ class _EditKostPageState extends State<EditKostPage> {
         body: jsonEncode(body),
       );
 
-      print("UPDATE STATUS:");
+      print("UPDATE STATUS UTAMA JSON:");
       print(res.statusCode);
 
-      print("UPDATE RESPONSE:");
+      print("UPDATE RESPONSE UTAMA JSON:");
       print(res.body);
 
-      if (res.statusCode != 200 && res.statusCode != 201) {
+      if (!isSuccessStatus(res.statusCode)) {
+        res = await http.post(
+          Uri.parse("${ApiService.baseUrl}/properties/$propertyId"),
+          headers: {
+            "Authorization": "Bearer $token",
+            "Accept": "application/json",
+          },
+          body: {
+            "_method": "PUT",
+            "title": titleC.text.trim(),
+            "description": descC.text.trim(),
+            "address": addressC.text.trim(),
+            "max_people": maxPeopleC.text.trim(),
+            if (selectedCityId != null) "city_id": selectedCityId.toString(),
+            "deleted_image_ids": jsonEncode(removedImageIds()),
+            "delete_image_ids": jsonEncode(removedImageIds()),
+            "removed_image_ids": jsonEncode(removedImageIds()),
+            "place_id": placeId,
+            "place_property_id": placeId,
+            "place_properties_id": placeId,
+            ...priceBody,
+          },
+        );
+
+        print("UPDATE STATUS UTAMA FORM METHOD PUT:");
+        print(res.statusCode);
+
+        print("UPDATE RESPONSE UTAMA FORM METHOD PUT:");
+        print(res.body);
+      }
+
+      if (!isSuccessStatus(res.statusCode)) {
         showMessage("Gagal memperbarui data utama kost");
 
         if (mounted) {
@@ -1345,6 +2228,20 @@ class _EditKostPageState extends State<EditKostPage> {
         return;
       }
 
+      final priceUpdated = await updatePriceWithoutChangingBackend(
+        propertyId: propertyId,
+        placeId: placeId,
+        token: token,
+        priceBody: priceBody,
+      );
+
+      print("HASIL UPDATE HARGA:");
+      print(
+        priceUpdated
+            ? "HARGA BERHASIL TERKIRIM"
+            : "HARGA BELUM DITERIMA ENDPOINT",
+      );
+
       await syncKostFeatures(propertyId: propertyId, token: token);
 
       await syncRoomFeatures(propertyId: propertyId, token: token);
@@ -1355,9 +2252,31 @@ class _EditKostPageState extends State<EditKostPage> {
 
       await syncNearbyPlaces(propertyId: propertyId, token: token);
 
+      final imageDeleteUpdated = await deleteRemovedExistingImages(
+        propertyId: propertyId,
+        token: token,
+      );
+
+      final imageUploadUpdated = await uploadNewImages(
+        propertyId: propertyId,
+        token: token,
+      );
+
+      if (imageDeleteUpdated && imageUploadUpdated) {
+        removedExistingImages.clear();
+        newImages.clear();
+      }
+
       if (!mounted) return;
 
-      showMessage("Kost berhasil diperbarui", success: true);
+      if (priceUpdated && imageDeleteUpdated && imageUploadUpdated) {
+        showMessage("Kost dan harga berhasil diperbarui", success: true);
+      } else {
+        showMessage(
+          "Kost berhasil diperbarui, tapi beberapa data tambahan mungkin belum diterima endpoint backend",
+          success: true,
+        );
+      }
 
       Navigator.pop(context, true);
     } catch (e) {
@@ -1470,7 +2389,7 @@ class _EditKostPageState extends State<EditKostPage> {
             inputFormatters: [RupiahInputFormatter()],
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             decoration: InputDecoration(
-              hintText: "0",
+              hintText: "Isi 0 jika tidak ingin ditampilkan",
               prefixIcon: Icon(icon, color: primaryColor, size: 20),
               prefixText: "Rp ",
               prefixStyle: TextStyle(
@@ -1553,6 +2472,353 @@ class _EditKostPageState extends State<EditKostPage> {
           ...children,
         ],
       ),
+    );
+  }
+
+  Widget buildImagePicker() {
+    final totalImages = existingImages.length + newImages.length;
+
+    return GestureDetector(
+      onTap: pickImage,
+      child: Container(
+        width: double.infinity,
+        height: totalImages == 0 ? 230 : 300,
+        margin: const EdgeInsets.only(bottom: 20),
+        decoration: BoxDecoration(
+          gradient: totalImages == 0
+              ? LinearGradient(
+                  colors: [primaryColor, const Color(0xFF18227A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: totalImages == 0 ? null : Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: primaryColor.withOpacity(0.18),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: totalImages == 0
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    height: 72,
+                    width: 72,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.add_photo_alternate_outlined,
+                      size: 38,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Tambah Foto Kost",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    "Upload maksimal 15 gambar",
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              )
+            : Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: softGreen,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            Icons.photo_library_outlined,
+                            color: primaryColor,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "$totalImages Foto Kost",
+                                style: TextStyle(
+                                  color: primaryColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                "Ketuk area ini untuk tambah foto lagi",
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: primaryColor,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Text(
+                            "Edit",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: GridView.builder(
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: totalImages,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                        itemBuilder: (context, index) {
+                          if (index < existingImages.length) {
+                            final image = existingImages[index];
+                            final imageUrl = getImageUrlFromDynamic(
+                              image['url'],
+                            );
+
+                            return Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Image.network(
+                                    imageUrl,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) {
+                                      return Container(
+                                        color: Colors.grey.shade200,
+                                        child: Icon(
+                                          Icons.broken_image_outlined,
+                                          color: Colors.grey.shade500,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 4,
+                                  top: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.55),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Text(
+                                      "Lama",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      removeExistingImage(index);
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.red,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.close,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          final newImageIndex = index - existingImages.length;
+
+                          return Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.file(
+                                  newImages[newImageIndex],
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                left: 4,
+                                top: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: primaryColor.withOpacity(0.88),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: const Text(
+                                    "Baru",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    removeNewImage(newImageIndex);
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget cityDropdown() {
+    final selectedCity = selectedCityId == null
+        ? null
+        : cities
+              .where((item) {
+                return parseNullableInt(item['id']) == selectedCityId;
+              })
+              .cast<Map<String, dynamic>?>()
+              .firstWhere((item) => item != null, orElse: () => null);
+
+    return DropdownSearch<Map<String, dynamic>>(
+      items: cities,
+      selectedItem: selectedCity,
+      itemAsString: (item) {
+        return item['name']?.toString() ?? "-";
+      },
+      compareFn: (item1, item2) {
+        return item1['id'] == item2['id'];
+      },
+      popupProps: const PopupProps.modalBottomSheet(
+        showSearchBox: true,
+        searchFieldProps: TextFieldProps(
+          decoration: InputDecoration(hintText: "Cari kota..."),
+        ),
+      ),
+      dropdownDecoratorProps: DropDownDecoratorProps(
+        dropdownSearchDecoration: InputDecoration(
+          hintText: isCityLoading
+              ? "Memuat kota..."
+              : cities.isEmpty
+              ? "Data kota belum tersedia"
+              : "Pilih Kota",
+          prefixIcon: Icon(Icons.location_city_outlined, color: primaryColor),
+          filled: true,
+          fillColor: const Color(0xFFF4F6FA),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide(color: Colors.grey.shade200),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide(color: primaryColor, width: 1.5),
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(18),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+      onChanged: (value) {
+        final int? cityId = parseNullableInt(value?['id']);
+
+        setState(() {
+          selectedCityId = cityId;
+          places = [];
+          selectedNearbyPlace = null;
+          nearbyDistanceController.clear();
+          selectedNearbyPlaces = [];
+        });
+
+        print("EDIT SELECTED CITY ID:");
+        print(selectedCityId);
+
+        if (cityId != null) {
+          loadPlacesByCity(cityId);
+        }
+      },
     );
   }
 
@@ -2308,55 +3574,285 @@ class _EditKostPageState extends State<EditKostPage> {
     return sectionCard(
       title: "Lokasi Terdekat",
       icon: Icons.near_me_outlined,
-      children: [
-        if (selectedNearbyPlaces.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF4F6FA),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.location_off_outlined, color: Colors.grey.shade500),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    "Lokasi terdekat belum dipilih",
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w600,
+      children: [nearbyPlaceInputLikeAddKost()],
+    );
+  }
+
+  Widget nearbyPlaceInputLikeAddKost() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: softGreen,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.near_me_outlined,
+                  color: primaryColor,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Lokasi Terdekat",
+                      style: TextStyle(
+                        color: primaryColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      selectedCityId == null
+                          ? "Pilih kota terlebih dahulu"
+                          : isLoadingPlaces
+                          ? "Mengambil data tempat..."
+                          : "Pilih tempat dari database",
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (selectedNearbyPlace != null ||
+                  nearbyDistanceController.text.trim().isNotEmpty)
+                IconButton(
+                  tooltip: "Kosongkan",
+                  onPressed: () {
+                    setState(() {
+                      selectedNearbyPlace = null;
+                      nearbyDistanceController.clear();
+                      selectedNearbyPlaces = [];
+                    });
+                  },
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: Colors.red,
+                    size: 20,
                   ),
                 ),
-              ],
-            ),
-          )
-        else
-          ...selectedNearbyPlaces.map((item) {
-            return selectedNearbyCard(item, null);
-          }),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          height: 46,
-          child: OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: primaryColor,
-              side: BorderSide(color: primaryColor),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            ],
+          ),
+          const SizedBox(height: 14),
+          DropdownSearch<Map<String, dynamic>>(
+            enabled: selectedCityId != null && !isLoadingPlaces,
+            items: places,
+            selectedItem: selectedNearbyPlace,
+            compareFn: (item1, item2) {
+              return cleanTextValue(item1['id']) == cleanTextValue(item2['id']);
+            },
+            itemAsString: (item) {
+              final type = getPlaceType(item);
+              final name = getPlaceName(item);
+
+              if (type.isEmpty) {
+                return name;
+              }
+
+              return "$type - $name";
+            },
+            popupProps: const PopupProps.modalBottomSheet(
+              showSearchBox: true,
+              searchFieldProps: TextFieldProps(
+                decoration: InputDecoration(hintText: "Cari tempat..."),
               ),
             ),
-            onPressed: showNearbyPlaceSheet,
-            icon: const Icon(Icons.edit_location_alt_outlined),
-            label: Text(
-              selectedNearbyPlaces.isEmpty
-                  ? "Pilih Lokasi Terdekat"
-                  : "Ganti Lokasi Terdekat",
-              style: const TextStyle(fontWeight: FontWeight.bold),
+            dropdownDecoratorProps: DropDownDecoratorProps(
+              dropdownSearchDecoration: InputDecoration(
+                hintText: selectedCityId == null
+                    ? "Pilih kota dulu"
+                    : isLoadingPlaces
+                    ? "Mengambil tempat..."
+                    : places.isEmpty
+                    ? "Tempat belum tersedia"
+                    : "Pilih tempat terdekat",
+                prefixIcon: isLoadingPlaces
+                    ? Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: primaryColor,
+                          ),
+                        ),
+                      )
+                    : Icon(Icons.place_outlined, color: primaryColor, size: 20),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Colors.grey.shade200),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: primaryColor, width: 1.4),
+                ),
+                disabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide(color: Colors.grey.shade200),
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            onChanged: (value) {
+              setState(() {
+                selectedNearbyPlace = value;
+                nearbyDistanceController.clear();
+                syncSingleNearbySelection();
+              });
+
+              print("EDIT SELECTED PLACE:");
+              print(selectedNearbyPlace);
+            },
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: selectedNearbyPlace == null
+                ? const SizedBox.shrink()
+                : Column(
+                    key: ValueKey(selectedNearbyPlace?['id']),
+                    children: [
+                      const SizedBox(height: 14),
+                      nearbySmallTextField(
+                        label:
+                            "Jarak dari ${getPlaceName(selectedNearbyPlace!)}",
+                        hint: "Contoh: 2.5",
+                        controller: nearbyDistanceController,
+                        icon: Icons.social_distance_outlined,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        suffixText: "KM",
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
+                        ],
+                        onChanged: (_) {
+                          setState(() {
+                            syncSingleNearbySelection();
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.info_outline_rounded,
+                              size: 16,
+                              color: Colors.grey.shade600,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Contoh: ${getPlaceName(selectedNearbyPlace!)} berjarak 3 KM dari kost",
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 11.5,
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget nearbySmallTextField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    String? suffixText,
+    List<TextInputFormatter>? inputFormatters,
+    ValueChanged<String>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: primaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            hintText: hint,
+            suffixText: suffixText,
+            prefixIcon: Icon(icon, color: primaryColor, size: 20),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 14,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: primaryColor, width: 1.4),
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
             ),
           ),
         ),
@@ -2481,6 +3977,7 @@ class _EditKostPageState extends State<EditKostPage> {
           child: Column(
             children: [
               buildHeader(),
+              buildImagePicker(),
               sectionCard(
                 title: "Informasi Utama",
                 icon: Icons.home_work_outlined,
@@ -2503,6 +4000,17 @@ class _EditKostPageState extends State<EditKostPage> {
                     maxLines: 3,
                     hint: "Masukkan alamat kost",
                   ),
+                  Text(
+                    "Pilih Kota",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: primaryColor,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  cityDropdown(),
+                  const SizedBox(height: 16),
                   input(
                     "Max Orang",
                     maxPeopleC,

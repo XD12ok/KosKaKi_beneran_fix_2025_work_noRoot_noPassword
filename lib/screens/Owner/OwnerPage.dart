@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +9,8 @@ import 'package:koskaki/screens/Owner/Laporan.dart';
 import 'package:koskaki/screens/Owner/PengaturanOwner.dart';
 import 'package:koskaki/screens/Owner/ListChat.dart';
 import 'package:koskaki/screens/Owner/LaporanSewa.dart';
+import 'package:koskaki/screens/Owner/TundaPembayaran.dart';
+import 'package:koskaki/screens/Owner/OwnerFamily.dart';
 
 class OwnerHomePage extends StatefulWidget {
   const OwnerHomePage({super.key});
@@ -22,13 +24,27 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
 
   bool loading = true;
   bool pendingCountLoading = true;
+  bool overdueCountLoading = true;
+  bool chatCountLoading = true;
 
   int currentIndex = 0;
+
+  Timer? chatBadgeTimer;
+
+  int chatBadgeCount = 0;
+  int? currentUserIdForChatBadge;
+
+  bool chatBadgeHasLoadedOnce = false;
+  bool chatBadgeRefreshing = false;
+
+  final Map<int, String> chatLastMessageKeys = {};
+  final Map<int, int> localChatUnreadCounts = {};
 
   List<dynamic> properties = [];
 
   int totalKos = 0;
   int pendingPaymentCount = 0;
+  int overdueInvoiceCount = 0;
 
   Map<String, dynamic>? latestProperty;
 
@@ -40,6 +56,483 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   void initState() {
     super.initState();
     loadOwnerHomeData();
+    loadChatBadge(showLoading: true, notifyNewMessage: false);
+    startChatBadgeTimer();
+  }
+
+  @override
+  void dispose() {
+    chatBadgeTimer?.cancel();
+    super.dispose();
+  }
+
+  void startChatBadgeTimer() {
+    chatBadgeTimer?.cancel();
+
+    chatBadgeTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      loadChatBadge(showLoading: false, notifyNewMessage: true);
+    });
+  }
+
+  String cleanText(dynamic value) {
+    if (value == null) return "";
+
+    if (value is Map || value is List) return "";
+
+    return value.toString().trim();
+  }
+
+  List<dynamic> normalizeConversationResult(dynamic result) {
+    if (result is List) return result;
+
+    final resultMap = toMap(result);
+
+    if (resultMap == null) return [];
+
+    final data = resultMap["data"];
+    final conversationsData = resultMap["conversations"];
+    final chatsData = resultMap["chats"];
+    final itemsData = resultMap["items"];
+
+    if (data is List) return data;
+    if (conversationsData is List) return conversationsData;
+    if (chatsData is List) return chatsData;
+    if (itemsData is List) return itemsData;
+
+    final dataMap = toMap(data);
+
+    if (dataMap != null) {
+      final nestedConversations = dataMap["conversations"];
+      final nestedChats = dataMap["chats"];
+      final nestedItems = dataMap["items"];
+
+      if (nestedConversations is List) return nestedConversations;
+      if (nestedChats is List) return nestedChats;
+      if (nestedItems is List) return nestedItems;
+    }
+
+    return [];
+  }
+
+  DateTime? parseDateTimeForChatBadge(dynamic value) {
+    final raw = cleanText(value);
+
+    if (raw.isEmpty) return null;
+
+    DateTime? parsed = DateTime.tryParse(raw);
+
+    parsed ??= DateTime.tryParse(raw.replaceFirst(" ", "T"));
+
+    if (parsed == null) return null;
+
+    return parsed.toLocal();
+  }
+
+  int getConversationIdForChatBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return 0;
+
+    final conversation = toMap(data["conversation"]);
+
+    return parseIntValue(
+      data["id"] ??
+          data["conversation_id"] ??
+          data["conversationId"] ??
+          conversation?["id"],
+    );
+  }
+
+  Map<String, dynamic>? getLastMessageMapForChatBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return null;
+
+    final keys = [
+      "last_message",
+      "lastMessage",
+      "latest_message",
+      "latestMessage",
+      "recent_message",
+      "recentMessage",
+      "last_chat",
+      "lastChat",
+      "message",
+    ];
+
+    dynamic lastMessage;
+
+    for (final key in keys) {
+      final value = data[key];
+
+      if (value != null) {
+        if (value is String && value.trim().isEmpty) continue;
+
+        lastMessage = value;
+        break;
+      }
+    }
+
+    final messages = data["messages"];
+
+    if (lastMessage == null && messages is List && messages.isNotEmpty) {
+      lastMessage = messages.last;
+    }
+
+    final chatMessages = data["chat_messages"];
+
+    if (lastMessage == null &&
+        chatMessages is List &&
+        chatMessages.isNotEmpty) {
+      lastMessage = chatMessages.last;
+    }
+
+    final lastMessageMap = toMap(lastMessage);
+
+    if (lastMessageMap == null) return null;
+
+    final nestedData = toMap(lastMessageMap["data"]);
+
+    if (nestedData != null) {
+      return nestedData;
+    }
+
+    return lastMessageMap;
+  }
+
+  String getTextFromMessageMapForChatBadge(Map<String, dynamic>? messageMap) {
+    if (messageMap == null) return "";
+
+    final keys = [
+      "message",
+      "body",
+      "text",
+      "content",
+      "pesan",
+      "isi_pesan",
+      "last_message",
+      "lastMessage",
+      "latest_message",
+      "latestMessage",
+    ];
+
+    for (final key in keys) {
+      final value = cleanText(messageMap[key]);
+
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    final nestedMessage = toMap(messageMap["message"]);
+    final nestedData = toMap(messageMap["data"]);
+
+    final nestedMessageText = getTextFromMessageMapForChatBadge(nestedMessage);
+
+    if (nestedMessageText.isNotEmpty) {
+      return nestedMessageText;
+    }
+
+    final nestedDataText = getTextFromMessageMapForChatBadge(nestedData);
+
+    if (nestedDataText.isNotEmpty) {
+      return nestedDataText;
+    }
+
+    return "";
+  }
+
+  String getRawLastMessageForChatBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return "";
+
+    final lastMessageMap = getLastMessageMapForChatBadge(chat);
+
+    final textFromMap = getTextFromMessageMapForChatBadge(lastMessageMap);
+
+    if (textFromMap.isNotEmpty) {
+      return textFromMap;
+    }
+
+    final keys = [
+      "last_message",
+      "lastMessage",
+      "latest_message",
+      "latestMessage",
+      "recent_message",
+      "recentMessage",
+      "last_chat",
+      "lastChat",
+      "message",
+    ];
+
+    for (final key in keys) {
+      final value = cleanText(data[key]);
+
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    return "";
+  }
+
+  DateTime? getChatDateForBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return null;
+
+    final lastMessageMap = getLastMessageMapForChatBadge(chat);
+
+    final dateFromMessage =
+        parseDateTimeForChatBadge(lastMessageMap?["created_at"]) ??
+        parseDateTimeForChatBadge(lastMessageMap?["sent_at"]) ??
+        parseDateTimeForChatBadge(lastMessageMap?["time"]) ??
+        parseDateTimeForChatBadge(lastMessageMap?["timestamp"]) ??
+        parseDateTimeForChatBadge(lastMessageMap?["updated_at"]);
+
+    if (dateFromMessage != null) {
+      return dateFromMessage;
+    }
+
+    return parseDateTimeForChatBadge(data["last_message_at"]) ??
+        parseDateTimeForChatBadge(data["latest_message_at"]) ??
+        parseDateTimeForChatBadge(data["last_chat_at"]) ??
+        parseDateTimeForChatBadge(data["updated_at"]) ??
+        parseDateTimeForChatBadge(data["created_at"]) ??
+        parseDateTimeForChatBadge(data["time"]);
+  }
+
+  String getLastMessageKeyForChatBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return "";
+
+    final lastMessageMap = getLastMessageMapForChatBadge(chat);
+    final chatDate = getChatDateForBadge(chat);
+    final rawText = getRawLastMessageForChatBadge(chat);
+
+    final id = cleanText(lastMessageMap?["id"]).isNotEmpty
+        ? cleanText(lastMessageMap?["id"])
+        : cleanText(data["last_message_id"]).isNotEmpty
+        ? cleanText(data["last_message_id"])
+        : cleanText(data["latest_message_id"]);
+
+    final dateText = chatDate?.toIso8601String() ?? "";
+
+    return "$id|$dateText|$rawText";
+  }
+
+  int? getApiUnreadCountForChatBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return null;
+
+    final keys = [
+      "unread_count",
+      "unread",
+      "total_unread",
+      "unread_messages",
+      "unread_messages_count",
+      "new_message_count",
+      "new_messages_count",
+      "owner_unread_count",
+      "unread_count_owner",
+    ];
+
+    for (final key in keys) {
+      if (data.containsKey(key)) {
+        return parseIntValue(data[key]);
+      }
+    }
+
+    final unreadMap = toMap(data["unread_counts"]);
+
+    if (unreadMap != null) {
+      return parseIntValue(
+        unreadMap["owner"] ??
+            unreadMap["owner_count"] ??
+            unreadMap["current_user"],
+      );
+    }
+
+    return null;
+  }
+
+  bool isLastMessageMineForChatBadge(dynamic chat) {
+    final lastMessageMap = getLastMessageMapForChatBadge(chat);
+
+    if (lastMessageMap == null) return false;
+
+    if (lastMessageMap["is_me"] != null) {
+      return lastMessageMap["is_me"] == true;
+    }
+
+    final senderId = parseIntValue(
+      lastMessageMap["sender_id"] ??
+          lastMessageMap["user_id"] ??
+          lastMessageMap["from_user_id"] ??
+          toMap(lastMessageMap["sender"])?["id"] ??
+          toMap(lastMessageMap["user"])?["id"],
+    );
+
+    if (currentUserIdForChatBadge != null && senderId > 0) {
+      return senderId == currentUserIdForChatBadge;
+    }
+
+    final senderType = cleanText(lastMessageMap["sender_type"]).toLowerCase();
+
+    if (senderType == "owner") {
+      return true;
+    }
+
+    final from = cleanText(lastMessageMap["from"]).toLowerCase();
+
+    if (from == "me" || from == "owner") {
+      return true;
+    }
+
+    return false;
+  }
+
+  void updateChatLastMessageKeys(List<dynamic> chats) {
+    for (final chat in chats) {
+      final conversationId = getConversationIdForChatBadge(chat);
+
+      if (conversationId <= 0) continue;
+
+      final key = getLastMessageKeyForChatBadge(chat);
+
+      if (key.isNotEmpty) {
+        chatLastMessageKeys[conversationId] = key;
+      }
+    }
+  }
+
+  Future<void> loadChatBadge({
+    bool showLoading = true,
+    bool notifyNewMessage = true,
+  }) async {
+    if (chatBadgeRefreshing) return;
+
+    chatBadgeRefreshing = true;
+
+    try {
+      if (showLoading && mounted) {
+        setState(() {
+          chatCountLoading = true;
+        });
+      }
+
+      final api = ApiService();
+
+      final rawToken = await api.getToken();
+      final token = cleanToken(rawToken);
+
+      if (token.isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          chatBadgeCount = 0;
+          chatCountLoading = false;
+        });
+
+        return;
+      }
+
+      if (currentUserIdForChatBadge == null) {
+        final user = await api.getUser();
+
+        final userMap = toMap(user);
+        final dataUserMap = toMap(userMap?["data"]);
+        final nestedUserMap = toMap(userMap?["user"]);
+
+        currentUserIdForChatBadge = parseIntValue(
+          userMap?["id"] ?? dataUserMap?["id"] ?? nestedUserMap?["id"],
+        );
+      }
+
+      final result = await api.getConversations();
+      final conversations = normalizeConversationResult(result);
+
+      int apiUnreadTotal = 0;
+      bool hasApiUnread = false;
+
+      for (final chat in conversations) {
+        final conversationId = getConversationIdForChatBadge(chat);
+
+        if (conversationId <= 0) continue;
+
+        final newKey = getLastMessageKeyForChatBadge(chat);
+        final oldKey = chatLastMessageKeys[conversationId];
+
+        final apiUnread = getApiUnreadCountForChatBadge(chat);
+
+        if (apiUnread != null) {
+          hasApiUnread = true;
+          apiUnreadTotal += apiUnread;
+        } else {
+          final isNewMessage =
+              chatBadgeHasLoadedOnce &&
+              notifyNewMessage &&
+              oldKey != null &&
+              oldKey.isNotEmpty &&
+              newKey.isNotEmpty &&
+              oldKey != newKey;
+
+          final lastMessageMine = isLastMessageMineForChatBadge(chat);
+
+          if (isNewMessage && !lastMessageMine) {
+            localChatUnreadCounts[conversationId] =
+                (localChatUnreadCounts[conversationId] ?? 0) + 1;
+          }
+        }
+
+        if (newKey.isNotEmpty) {
+          chatLastMessageKeys[conversationId] = newKey;
+        }
+      }
+
+      final localUnreadTotal = localChatUnreadCounts.values.fold<int>(
+        0,
+        (previous, value) => previous + value,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        chatBadgeCount = hasApiUnread ? apiUnreadTotal : localUnreadTotal;
+        chatCountLoading = false;
+        chatBadgeHasLoadedOnce = true;
+      });
+    } catch (e) {
+      debugPrint("LOAD OWNER CHAT BADGE ERROR:");
+      debugPrint(e.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        chatBadgeCount = 0;
+        chatCountLoading = false;
+      });
+    } finally {
+      chatBadgeRefreshing = false;
+    }
+  }
+
+  Future<void> openChatOwnerPage() async {
+    setState(() {
+      chatBadgeCount = 0;
+      localChatUnreadCounts.clear();
+    });
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ChatListOwnerPage()),
+    );
+
+    await loadChatBadge(showLoading: false, notifyNewMessage: false);
   }
 
   String cleanToken(String? token) {
@@ -64,6 +557,9 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
       "Accept": "application/json",
       "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
     };
   }
 
@@ -94,6 +590,8 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
       if (value["bookings"] is List) return value["bookings"];
       if (value["items"] is List) return value["items"];
       if (value["results"] is List) return value["results"];
+      if (value["invoices"] is List) return value["invoices"];
+      if (value["payments"] is List) return value["payments"];
     }
 
     return [];
@@ -106,11 +604,58 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   int parseIntValue(dynamic value) {
     if (value == null) return 0;
 
-    final cleaned = value.toString().replaceAll(RegExp(r"[^0-9]"), "");
+    if (value is int) return value;
+
+    if (value is double) return value.round();
+
+    String text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return 0;
+
+    text = text.replaceAll("Rp", "").trim();
+
+    if (RegExp(r',\d{1,2}$').hasMatch(text)) {
+      text = text.split(',').first;
+    }
+
+    if (RegExp(r'\.\d{1,2}$').hasMatch(text)) {
+      text = text.split('.').first;
+    }
+
+    final normalNumber = double.tryParse(text);
+
+    if (normalNumber != null) {
+      return normalNumber.round();
+    }
+
+    final cleaned = text.replaceAll(RegExp(r"[^0-9]"), "");
 
     if (cleaned.isEmpty) return 0;
 
     return int.tryParse(cleaned) ?? 0;
+  }
+
+  DateTime? parseNullableDate(dynamic value) {
+    if (value == null) return null;
+
+    final text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return null;
+
+    return DateTime.tryParse(text);
+  }
+
+  DateTime endOfDay(DateTime date) {
+    return DateTime(date.year, date.month, date.day, 23, 59, 59);
+  }
+
+  int getRentalBookingId(Map<String, dynamic> booking) {
+    return parseIntValue(
+      booking["rental_booking_id"] ??
+          booking["rentalBookingId"] ??
+          booking["booking_id"] ??
+          booking["id"],
+    );
   }
 
   Map<String, dynamic> getInvoiceFromBookingForBadge(
@@ -134,6 +679,46 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
     }
 
     return {};
+  }
+
+  int getInvoiceRemainingAmount(Map<String, dynamic> invoice) {
+    final remaining = parseIntValue(invoice["remaining_amount"]);
+
+    if (remaining > 0) return remaining;
+
+    final total = parseIntValue(
+      invoice["total_amount"] ?? invoice["amount"] ?? invoice["grand_total"],
+    );
+
+    final paid = parseIntValue(invoice["paid_amount"]);
+
+    final result = total - paid;
+
+    return result > 0 ? result : 0;
+  }
+
+  bool isOverdueInvoice(Map<String, dynamic> invoice) {
+    final status = cleanLower(invoice["status"]);
+
+    if (status == "overdue" || status == "terlambat") {
+      return true;
+    }
+
+    final amount = getInvoiceRemainingAmount(invoice);
+
+    if (amount <= 0) return false;
+
+    final dueDate = parseNullableDate(
+      invoice["due_date"] ??
+          invoice["dueDate"] ??
+          invoice["payment_due_date"] ??
+          invoice["paymentDueDate"] ??
+          invoice["deadline"],
+    );
+
+    if (dueDate == null) return false;
+
+    return DateTime.now().isAfter(endOfDay(dueDate));
   }
 
   Map<String, dynamic>? getPendingPaymentFromBookingForBadge(
@@ -247,15 +832,123 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
     return null;
   }
 
+  Map<String, dynamic>? getPendingPaymentFromInvoiceForBadge(
+    Map<String, dynamic> invoice,
+  ) {
+    final List<dynamic> candidates = [];
+
+    void addIfExists(dynamic value) {
+      if (value == null) return;
+
+      if (value is List) {
+        candidates.addAll(value);
+      } else {
+        candidates.add(value);
+      }
+    }
+
+    addIfExists(invoice["payments"]);
+    addIfExists(invoice["rental_payments"]);
+    addIfExists(invoice["rentalPayments"]);
+    addIfExists(invoice["payment"]);
+    addIfExists(invoice["latest_payment"]);
+    addIfExists(invoice["latestPayment"]);
+
+    for (final item in candidates) {
+      final payment = toMap(item);
+
+      if (payment == null) continue;
+
+      final status = cleanLower(payment["status"] ?? payment["payment_status"]);
+
+      final isPending =
+          status == "pending" ||
+          status == "waiting_confirmation" ||
+          status == "waiting" ||
+          status == "unverified" ||
+          status == "waiting_verification" ||
+          status == "menunggu";
+
+      if (isPending) {
+        return payment;
+      }
+    }
+
+    return null;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchInvoicesForBookingForBadge({
+    required int rentalBookingId,
+    required String token,
+  }) async {
+    final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+
+    final urls = [
+      "${ApiService.baseUrl}/rental-bookings/$rentalBookingId/invoices?_=$cacheBuster",
+      "${ApiService.baseUrl}/rental-booking/$rentalBookingId/invoices?_=$cacheBuster",
+      "${ApiService.baseUrl}/invoices/rental-booking/$rentalBookingId?_=$cacheBuster",
+      "${ApiService.baseUrl}/invoices/$rentalBookingId?_=$cacheBuster",
+    ];
+
+    for (final url in urls) {
+      try {
+        final response = await http
+            .get(Uri.parse(url), headers: ownerAuthHeaders(token))
+            .timeout(const Duration(seconds: 15));
+
+        debugPrint("GET BADGE OVERDUE INVOICES URL:");
+        debugPrint(url);
+
+        debugPrint("GET BADGE OVERDUE INVOICES STATUS:");
+        debugPrint(response.statusCode.toString());
+
+        debugPrint("GET BADGE OVERDUE INVOICES BODY:");
+        debugPrint(response.body);
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final invoices = parseDynamicList(decoded);
+
+          return invoices
+              .where((item) => item is Map)
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .where((invoice) {
+                final id = parseIntValue(invoice["rental_booking_id"]);
+
+                if (id <= 0) return true;
+
+                return id == rentalBookingId;
+              })
+              .toList();
+        }
+
+        if (response.statusCode != 404 && response.statusCode != 405) {
+          return [];
+        }
+      } catch (e) {
+        debugPrint("GET BADGE OVERDUE INVOICES ERROR:");
+        debugPrint(e.toString());
+      }
+    }
+
+    return [];
+  }
+
   Future<void> loadOwnerHomeData() async {
     if (!mounted) return;
 
     setState(() {
       loading = true;
       pendingCountLoading = true;
+      overdueCountLoading = true;
     });
 
-    await Future.wait([loadUserAndProperties(), loadPendingPaymentCount()]);
+    await Future.wait([
+      loadUserAndProperties(),
+      loadPendingPaymentCount(),
+      loadOverdueInvoiceCount(),
+      loadChatBadge(showLoading: false, notifyNewMessage: false),
+    ]);
 
     if (!mounted) return;
 
@@ -265,7 +958,12 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
   }
 
   Future<void> refreshOwnerHomeData() async {
-    await Future.wait([loadUserAndProperties(), loadPendingPaymentCount()]);
+    await Future.wait([
+      loadUserAndProperties(),
+      loadPendingPaymentCount(),
+      loadOverdueInvoiceCount(),
+      loadChatBadge(showLoading: false, notifyNewMessage: true),
+    ]);
   }
 
   Future<void> loadUserAndProperties() async {
@@ -414,6 +1112,7 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
       debugPrint(response.body);
 
       int totalPending = 0;
+      final Set<int> countedPaymentIds = {};
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -430,7 +1129,16 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
           final payment = getPendingPaymentFromBookingForBadge(booking);
 
           if (payment != null) {
-            totalPending++;
+            final paymentId = parseIntValue(payment["id"]);
+
+            if (paymentId > 0) {
+              if (!countedPaymentIds.contains(paymentId)) {
+                countedPaymentIds.add(paymentId);
+                totalPending++;
+              }
+            } else {
+              totalPending++;
+            }
           }
         }
       }
@@ -457,15 +1165,139 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
     }
   }
 
+  Future<void> loadOverdueInvoiceCount() async {
+    if (!mounted) return;
+
+    setState(() {
+      overdueCountLoading = true;
+    });
+
+    try {
+      final api = ApiService();
+
+      final rawToken = await api.getToken();
+      final token = cleanToken(rawToken);
+
+      debugPrint("OVERDUE BADGE TOKEN STATUS:");
+      debugPrint(
+        token.isEmpty ? "TOKEN KOSONG" : "TOKEN ADA LENGTH: ${token.length}",
+      );
+
+      if (token.isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          overdueInvoiceCount = 0;
+          overdueCountLoading = false;
+        });
+
+        return;
+      }
+
+      final response = await http
+          .get(
+            Uri.parse("${ApiService.baseUrl}/rental-bookings"),
+            headers: ownerAuthHeaders(token),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint("GET OVERDUE BADGE RENTAL BOOKINGS STATUS:");
+      debugPrint(response.statusCode.toString());
+
+      debugPrint("GET OVERDUE BADGE RENTAL BOOKINGS BODY:");
+      debugPrint(response.body);
+
+      int totalOverdue = 0;
+      final Set<int> countedInvoiceIds = {};
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final bookings = parseDynamicList(decoded);
+
+        for (final item in bookings) {
+          final booking = toMap(item);
+
+          if (booking == null) continue;
+
+          final rentalBookingId = getRentalBookingId(booking);
+
+          if (rentalBookingId <= 0) continue;
+
+          final invoices = await fetchInvoicesForBookingForBadge(
+            rentalBookingId: rentalBookingId,
+            token: token,
+          );
+
+          for (final invoice in invoices) {
+            final invoiceId = parseIntValue(invoice["id"]);
+
+            if (!isOverdueInvoice(invoice)) continue;
+
+            if (invoiceId > 0) {
+              if (!countedInvoiceIds.contains(invoiceId)) {
+                countedInvoiceIds.add(invoiceId);
+                totalOverdue++;
+              }
+            } else {
+              totalOverdue++;
+            }
+          }
+        }
+      }
+
+      debugPrint("FINAL OVERDUE BADGE COUNT:");
+      debugPrint(totalOverdue.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        overdueInvoiceCount = totalOverdue;
+        overdueCountLoading = false;
+      });
+    } catch (e) {
+      debugPrint("GET OVERDUE BADGE COUNT ERROR:");
+      debugPrint(e.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        overdueInvoiceCount = 0;
+        overdueCountLoading = false;
+      });
+    }
+  }
+
   Future<void> openLaporanSewaPage() async {
-    debugPrint("CARD PENGAJUAN SEWA DIKLIK");
+    debugPrint("CARD PEMBAYARAN DIKLIK");
 
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const LaporanSewa()),
     );
 
-    await loadPendingPaymentCount();
+    await refreshOwnerHomeData();
+  }
+
+  Future<void> openTundaPembayaranPage() async {
+    debugPrint("CARD PENGAJUAN SEWA / TUNDA PEMBAYARAN DIKLIK");
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const TundaPembayaran()),
+    );
+
+    await refreshOwnerHomeData();
+  }
+
+  Future<void> openOwnerFamilyPage() async {
+    debugPrint("CARD KELOLA DATA KOS / FAMILY OWNER DIKLIK");
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const OwnerFamily()),
+    );
+
+    await refreshOwnerHomeData();
   }
 
   void goToKostPage() {
@@ -512,31 +1344,69 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
           ],
         ),
         actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: IconButton(
-              icon: const Icon(
-                Icons.message_outlined,
-                color: Color(0xFF0A0E50),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.message_outlined,
+                    color: Color(0xFF0A0E50),
+                  ),
+                  onPressed: openChatOwnerPage,
+                ),
               ),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ChatListOwnerPage()),
-                );
-              },
-            ),
+
+              if (chatBadgeCount > 0)
+                Positioned(
+                  right: 2,
+                  top: -4,
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 20,
+                      minHeight: 20,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.red.withOpacity(0.28),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Text(
+                        chatBadgeCount > 99 ? "99+" : "$chatBadgeCount",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),
@@ -551,9 +1421,11 @@ class _OwnerHomePageState extends State<OwnerHomePage> {
             latestProperty: latestProperty,
             pendingPaymentCount: pendingPaymentCount,
             pendingCountLoading: pendingCountLoading,
-            onOpenPengajuanSewa: openLaporanSewaPage,
-            onOpenKelolaKos: goToKostPage,
-            onOpenTagihan: goToLaporanPage,
+            overdueInvoiceCount: overdueInvoiceCount,
+            overdueCountLoading: overdueCountLoading,
+            onOpenPembayaran: openLaporanSewaPage,
+            onOpenKelolaKos: openOwnerFamilyPage,
+            onOpenPengajuanSewa: openTundaPembayaranPage,
             onRefresh: refreshOwnerHomeData,
           ),
           const KostPage(),
@@ -620,11 +1492,15 @@ class BerandaPage extends StatelessWidget {
 
   final bool pendingCountLoading;
 
-  final VoidCallback onOpenPengajuanSewa;
+  final int overdueInvoiceCount;
+
+  final bool overdueCountLoading;
+
+  final VoidCallback onOpenPembayaran;
 
   final VoidCallback onOpenKelolaKos;
 
-  final VoidCallback onOpenTagihan;
+  final VoidCallback onOpenPengajuanSewa;
 
   final Future<void> Function() onRefresh;
 
@@ -637,9 +1513,11 @@ class BerandaPage extends StatelessWidget {
     required this.latestProperty,
     required this.pendingPaymentCount,
     required this.pendingCountLoading,
-    required this.onOpenPengajuanSewa,
+    required this.overdueInvoiceCount,
+    required this.overdueCountLoading,
+    required this.onOpenPembayaran,
     required this.onOpenKelolaKos,
-    required this.onOpenTagihan,
+    required this.onOpenPengajuanSewa,
     required this.onRefresh,
   });
 
@@ -674,27 +1552,29 @@ class BerandaPage extends StatelessWidget {
               children: [
                 Expanded(
                   child: _buildQuickActionCard(
-                    icon: Icons.description_outlined,
+                    icon: Icons.payments_outlined,
                     iconColor: Colors.blue,
-                    title: 'Pengajuan Sewa',
-                    subtitle: 'Balas pengajuan penyewa',
+                    title: 'Pembayaran',
+                    subtitle: 'Accept atau reject bukti bayar',
                     showBadge: true,
                     badgeCount: pendingPaymentCount,
                     badgeLoading: pendingCountLoading,
-                    onTap: onOpenPengajuanSewa,
+                    badgeType: BadgeType.payment,
+                    onTap: onOpenPembayaran,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: _buildQuickActionCard(
-                    icon: Icons.receipt_long_outlined,
+                    icon: Icons.description_outlined,
                     iconColor: Colors.orange,
-                    title: 'Tagihan',
-                    subtitle: 'Ingatkan pembayaran',
-                    showBadge: false,
-                    badgeCount: 0,
-                    badgeLoading: false,
-                    onTap: onOpenTagihan,
+                    title: 'Pengajuan Sewa',
+                    subtitle: 'Overdue dan pengajuan aktif',
+                    showBadge: true,
+                    badgeCount: overdueInvoiceCount,
+                    badgeLoading: overdueCountLoading,
+                    badgeType: BadgeType.overdue,
+                    onTap: onOpenPengajuanSewa,
                   ),
                 ),
               ],
@@ -810,7 +1690,7 @@ class BerandaPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "Kelola data kos, tagihan, dan pengajuan dalam satu tempat.",
+                  "Kelola data kos, pembayaran, dan pengajuan sewa dalam satu tempat.",
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.82),
                     fontSize: 13,
@@ -914,13 +1794,29 @@ class BerandaPage extends StatelessWidget {
     );
   }
 
-  Widget _buildPendingBadge({required int count, required bool loading}) {
-    final bool hasPending = count > 0;
+  Widget _buildBadge({
+    required int count,
+    required bool loading,
+    required BadgeType type,
+  }) {
+    final bool hasCount = count > 0;
+
+    Color backgroundColor;
+
+    if (type == BadgeType.overdue) {
+      backgroundColor = hasCount
+          ? const Color(0xFFEF4444)
+          : const Color(0xFF16A34A);
+    } else {
+      backgroundColor = hasCount
+          ? const Color(0xFF2563EB)
+          : const Color(0xFF16A34A);
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: hasPending ? const Color(0xFFEF4444) : const Color(0xFF16A34A),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: loading
@@ -952,6 +1848,7 @@ class BerandaPage extends StatelessWidget {
     required bool showBadge,
     required int badgeCount,
     required bool badgeLoading,
+    required BadgeType badgeType,
   }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1003,7 +1900,11 @@ class BerandaPage extends StatelessWidget {
                 ),
                 if (showBadge) ...[
                   const SizedBox(width: 6),
-                  _buildPendingBadge(count: badgeCount, loading: badgeLoading),
+                  _buildBadge(
+                    count: badgeCount,
+                    loading: badgeLoading,
+                    type: badgeType,
+                  ),
                 ],
               ],
             ),
@@ -1277,3 +2178,5 @@ class BerandaPage extends StatelessWidget {
     );
   }
 }
+
+enum BadgeType { payment, overdue }

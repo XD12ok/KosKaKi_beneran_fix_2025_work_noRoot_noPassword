@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:koskaki/screens/Owner/RatingKos.dart';
 import 'package:koskaki/screens/Owner/Edit_kost.dart';
 import 'package:koskaki/service/api_service.dart';
 
@@ -33,10 +34,11 @@ class _DetailKostPageState extends State<DetailKostPage> {
     super.initState();
     getDetail();
   }
-
+  
   Future<void> getDetail() async {
     try {
       final token = await ApiService().getToken();
+
       final id = widget.kost['id'];
 
       if (id == null) {
@@ -95,6 +97,9 @@ class _DetailKostPageState extends State<DetailKostPage> {
             },
           );
 
+          debugPrint("NEARBY OWNER URL:");
+          debugPrint("${ApiService.baseUrl}/properties/$id/nearby-places");
+
           debugPrint("NEARBY OWNER STATUS:");
           debugPrint(nearbyResponse.statusCode.toString());
 
@@ -103,7 +108,11 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
           if (nearbyResponse.statusCode == 200) {
             final nearbyDecoded = jsonDecode(nearbyResponse.body);
+
             final endpointNearby = parseDynamicList(nearbyDecoded);
+
+            debugPrint("NEARBY OWNER PARSED LENGTH:");
+            debugPrint(endpointNearby.length.toString());
 
             if (endpointNearby.isNotEmpty) {
               nearbyData = endpointNearby;
@@ -127,9 +136,14 @@ class _DetailKostPageState extends State<DetailKostPage> {
         if (!mounted) return;
 
         setState(() {
-          detail = null;
-          images = [];
-          nearbyPlaces = [];
+          detail = Map<String, dynamic>.from(widget.kost);
+          images = extractImages(widget.kost).take(15).toList();
+          nearbyPlaces = parseDynamicList(
+            widget.kost['nearby_places'] ??
+                widget.kost['nearbyPlaces'] ??
+                widget.kost['nearby'] ??
+                widget.kost['property_nearby_places'],
+          );
           currentImageIndex = 0;
           isLoading = false;
         });
@@ -141,13 +155,69 @@ class _DetailKostPageState extends State<DetailKostPage> {
       if (!mounted) return;
 
       setState(() {
-        detail = null;
-        images = [];
-        nearbyPlaces = [];
+        detail = Map<String, dynamic>.from(widget.kost);
+        images = extractImages(widget.kost).take(15).toList();
+        nearbyPlaces = parseDynamicList(
+          widget.kost['nearby_places'] ??
+              widget.kost['nearbyPlaces'] ??
+              widget.kost['nearby'] ??
+              widget.kost['property_nearby_places'],
+        );
         currentImageIndex = 0;
         isLoading = false;
       });
     }
+  }
+
+  List<dynamic> parseDynamicList(dynamic value) {
+    if (value == null) return [];
+  
+    if (value is List) {
+      return value;
+    }
+  
+    if (value is Map) {
+      if (value['data'] is List) {
+        return List<dynamic>.from(value['data']);
+      }
+  
+      if (value['data'] is Map && value['data']['data'] is List) {
+        return List<dynamic>.from(value['data']['data']);
+      }
+  
+      if (value['nearby_places'] is List) {
+        return List<dynamic>.from(value['nearby_places']);
+      }
+  
+      if (value['nearbyPlaces'] is List) {
+        return List<dynamic>.from(value['nearbyPlaces']);
+      }
+  
+      if (value['property_nearby_places'] is List) {
+        return List<dynamic>.from(value['property_nearby_places']);
+      }
+  
+      if (value['places'] is List) {
+        return List<dynamic>.from(value['places']);
+      }
+  
+      if (value['items'] is List) {
+        return List<dynamic>.from(value['items']);
+      }
+  
+      if (value['results'] is List) {
+        return List<dynamic>.from(value['results']);
+      }
+    }
+  
+    if (value is String && value.trim().isNotEmpty && value != "null") {
+      try {
+        final decoded = jsonDecode(value);
+        return parseDynamicList(decoded);
+      } catch (_) {}
+    }
+  
+    return [];
   }
 
   List<dynamic> extractImages(dynamic data) {
@@ -174,57 +244,21 @@ class _DetailKostPageState extends State<DetailKostPage> {
     return result.toSet().toList();
   }
 
-  List<dynamic> parseDynamicList(dynamic value) {
-    if (value == null) return [];
-
-    if (value is List) {
-      return value;
-    }
-
-    if (value is Map) {
-      if (value['data'] is List) {
-        return List<dynamic>.from(value['data']);
-      }
-
-      if (value['data'] is Map && value['data']['data'] is List) {
-        return List<dynamic>.from(value['data']['data']);
-      }
-
-      if (value['nearby_places'] is List) {
-        return List<dynamic>.from(value['nearby_places']);
-      }
-
-      if (value['nearbyPlaces'] is List) {
-        return List<dynamic>.from(value['nearbyPlaces']);
-      }
-
-      if (value['places'] is List) {
-        return List<dynamic>.from(value['places']);
-      }
-
-      if (value['items'] is List) {
-        return List<dynamic>.from(value['items']);
-      }
-    }
-
-    if (value is String && value.trim().isNotEmpty && value != "null") {
-      try {
-        final decoded = jsonDecode(value);
-        return parseDynamicList(decoded);
-      } catch (_) {}
-    }
-
-    return [];
-  }
-
   void openImageViewer(int initialIndex) {
     if (images.isEmpty) return;
 
-    final imageUrls = images.take(15).map((item) {
-      return fixUrl(item);
-    }).toList();
+    final imageUrls = images
+        .take(15)
+        .map((item) {
+          return fixUrl(item);
+        })
+        .where((url) {
+          return url.trim().isNotEmpty;
+        })
+        .toList();
 
     if (imageUrls.isEmpty) return;
+
     if (initialIndex < 0 || initialIndex >= imageUrls.length) return;
 
     Navigator.push(
@@ -237,7 +271,7 @@ class _DetailKostPageState extends State<DetailKostPage> {
         pageBuilder: (_, animation, __) {
           return FadeTransition(
             opacity: animation,
-            child: FullscreenKostImageViewer(
+            child: FullscreenOwnerKostImageViewer(
               imageUrls: imageUrls,
               initialIndex: initialIndex,
             ),
@@ -245,6 +279,113 @@ class _DetailKostPageState extends State<DetailKostPage> {
         },
       ),
     );
+  }
+
+  String formatRupiah(dynamic value) {
+    if (value == null) return "";
+
+    final number = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (number.isEmpty) return "";
+
+    final buffer = StringBuffer();
+
+    int count = 0;
+
+    for (int i = number.length - 1; i >= 0; i--) {
+      buffer.write(number[i]);
+      count++;
+
+      if (count == 3 && i != 0) {
+        buffer.write('.');
+        count = 0;
+      }
+    }
+
+    return buffer.toString().split('').reversed.join();
+  }
+
+  bool hasValue(dynamic value) {
+    if (value == null) return false;
+
+    final raw = value.toString().trim();
+
+    if (raw.isEmpty || raw == "null") return false;
+
+    final clean = raw.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (clean.isEmpty) return false;
+
+    final number = int.tryParse(clean) ?? 0;
+
+    return number > 0;
+  }
+
+  List<_PriceItem> getPriceItems() {
+    final d = detail ?? widget.kost;
+
+    final night = d['price_perNight'] ?? d['price_per_night'];
+    final week = d['price_perWeek'] ?? d['price_per_week'];
+    final month = d['price_perMonth'] ?? d['price_per_month'];
+    final year = d['price_perYear'] ?? d['price_per_year'];
+
+    final List<_PriceItem> prices = [];
+
+    if (hasValue(month)) {
+      prices.add(
+        _PriceItem(
+          title: "Bulanan",
+          price: "Rp ${formatRupiah(month)}",
+          subtitle: "Per Bulan",
+          icon: Icons.calendar_month_rounded,
+        ),
+      );
+    }
+
+    if (hasValue(year)) {
+      prices.add(
+        _PriceItem(
+          title: "Tahunan",
+          price: "Rp ${formatRupiah(year)}",
+          subtitle: "Per Tahun",
+          icon: Icons.event_available_rounded,
+        ),
+      );
+    }
+
+    if (hasValue(week)) {
+      prices.add(
+        _PriceItem(
+          title: "Mingguan",
+          price: "Rp ${formatRupiah(week)}",
+          subtitle: "Per Minggu",
+          icon: Icons.date_range_rounded,
+        ),
+      );
+    }
+
+    if (hasValue(night)) {
+      prices.add(
+        _PriceItem(
+          title: "Harian",
+          price: "Rp ${formatRupiah(night)}",
+          subtitle: "Per Malam",
+          icon: Icons.night_shelter_rounded,
+        ),
+      );
+    }
+
+    return prices;
+  }
+
+  String getMainPrice() {
+    final prices = getPriceItems();
+
+    if (prices.isEmpty) {
+      return "Harga belum ditambahkan";
+    }
+
+    return "${prices.first.price} ${prices.first.subtitle}";
   }
 
   String fixUrl(dynamic img) {
@@ -290,111 +431,6 @@ class _DetailKostPageState extends State<DetailKostPage> {
     return "$baseUrlWithoutApi/storage/$url";
   }
 
-  String formatRupiah(dynamic value) {
-    if (value == null) return "";
-
-    final number = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
-
-    if (number.isEmpty) return "";
-
-    final buffer = StringBuffer();
-
-    int count = 0;
-
-    for (int i = number.length - 1; i >= 0; i--) {
-      buffer.write(number[i]);
-      count++;
-
-      if (count == 3 && i != 0) {
-        buffer.write('.');
-        count = 0;
-      }
-    }
-
-    return buffer.toString().split('').reversed.join();
-  }
-
-  String getPrice() {
-    final d = detail ?? {};
-
-    final night = d['price_perNight'] ?? d['price_per_night'];
-    final week = d['price_perWeek'] ?? d['price_per_week'];
-    final month = d['price_perMonth'] ?? d['price_per_month'];
-    final year = d['price_perYear'] ?? d['price_per_year'];
-
-    if (month != null && month.toString().isNotEmpty) {
-      return "Rp ${formatRupiah(month)} / bulan";
-    }
-
-    if (year != null && year.toString().isNotEmpty) {
-      return "Rp ${formatRupiah(year)} / tahun";
-    }
-
-    if (week != null && week.toString().isNotEmpty) {
-      return "Rp ${formatRupiah(week)} / minggu";
-    }
-
-    if (night != null && night.toString().isNotEmpty) {
-      return "Rp ${formatRupiah(night)} / malam";
-    }
-
-    return "Harga belum ditambahkan";
-  }
-
-  Future<void> deleteKost() async {
-    try {
-      final token = await ApiService().getToken();
-      final id = widget.kost['id'];
-
-      final response = await http.delete(
-        Uri.parse("${ApiService.baseUrl}/properties/$id"),
-        headers: {
-          "Accept": "application/json",
-          if (token != null) "Authorization": "Bearer $token",
-        },
-      );
-
-      if (response.statusCode == 200 || response.statusCode == 204) {
-        if (mounted) {
-          Navigator.pop(context, true);
-        }
-      } else {
-        showMessage(response.body);
-      }
-    } catch (e) {
-      debugPrint("DELETE ERROR:");
-      debugPrint(e.toString());
-
-      showMessage("Gagal menghapus kost");
-    }
-  }
-
-  void goEdit() {
-    if (detail == null) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => EditKostPage(kost: detail!)),
-    ).then((value) {
-      if (value == true) {
-        getDetail();
-      }
-    });
-  }
-
-  void showMessage(String message, {bool success = false}) {
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: success ? Colors.green : Colors.red,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-    );
-  }
-
   List<String> parseStringList(dynamic value) {
     if (value == null) return [];
 
@@ -422,7 +458,20 @@ class _DetailKostPageState extends State<DetailKostPage> {
         final decoded = jsonDecode(value);
 
         if (decoded is List) {
-          return parseStringList(decoded);
+          return decoded
+              .map((e) {
+                if (e is Map) {
+                  return e['feature']?.toString() ??
+                      e['name']?.toString() ??
+                      e['title']?.toString() ??
+                      e['label']?.toString() ??
+                      "";
+                }
+
+                return e.toString();
+              })
+              .where((e) => e.trim().isNotEmpty)
+              .toList();
         }
       } catch (_) {}
 
@@ -522,6 +571,14 @@ class _DetailKostPageState extends State<DetailKostPage> {
         .join(" ");
   }
 
+  double getRatingAverage(dynamic value) {
+    return double.tryParse(value?.toString() ?? "0") ?? 0;
+  }
+
+  int getRatingCount(dynamic value) {
+    return int.tryParse(value?.toString() ?? "0") ?? 0;
+  }
+
   String formatDistance(dynamic value) {
     if (value == null) return "";
 
@@ -540,25 +597,31 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
   String getNearbyName(dynamic item) {
     if (item is! Map) return "-";
-
+  
     final map = Map<String, dynamic>.from(item);
-    final place = map['place'] ?? map['places'] ?? map['nearby_place'];
-
+  
+    final place =
+        map['place'] ??
+        map['places'] ??
+        map['nearby_place'] ??
+        map['nearbyPlace'] ??
+        map['nearby_places'];
+  
     if (place is Map) {
       final placeMap = Map<String, dynamic>.from(place);
-
+  
       final name =
           placeMap['name']?.toString() ??
           placeMap['title']?.toString() ??
           placeMap['place_name']?.toString() ??
           placeMap['nama']?.toString() ??
           "";
-
+  
       if (name.trim().isNotEmpty && name != "null") {
         return name;
       }
     }
-
+  
     return map['name']?.toString() ??
         map['title']?.toString() ??
         map['place_name']?.toString() ??
@@ -569,25 +632,31 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
   String getNearbyType(dynamic item) {
     if (item is! Map) return "";
-
+  
     final map = Map<String, dynamic>.from(item);
-    final place = map['place'] ?? map['places'] ?? map['nearby_place'];
-
+  
+    final place =
+        map['place'] ??
+        map['places'] ??
+        map['nearby_place'] ??
+        map['nearbyPlace'] ??
+        map['nearby_places'];
+  
     if (place is Map) {
       final placeMap = Map<String, dynamic>.from(place);
-
+  
       final type =
           placeMap['type']?.toString() ??
           placeMap['category']?.toString() ??
           placeMap['place_type']?.toString() ??
           placeMap['kategori']?.toString() ??
           "";
-
+  
       if (type.trim().isNotEmpty && type != "null") {
         return type;
       }
     }
-
+  
     return map['type']?.toString() ??
         map['category']?.toString() ??
         map['place_type']?.toString() ??
@@ -597,31 +666,32 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
   String getNearbyDistance(dynamic item) {
     if (item is! Map) return "";
-
+  
     final map = Map<String, dynamic>.from(item);
+  
     final pivot = map['pivot'];
-
+  
     if (pivot is Map) {
       final pivotMap = Map<String, dynamic>.from(pivot);
-
+  
       final distance =
           pivotMap['distance']?.toString() ??
           pivotMap['distance_km']?.toString() ??
           pivotMap['jarak']?.toString() ??
           "";
-
+  
       if (distance.trim().isNotEmpty && distance != "null") {
         return formatDistance(distance);
       }
     }
-
+  
     final distance =
         map['distance']?.toString() ??
         map['distance_km']?.toString() ??
         map['jarak']?.toString() ??
         map['range']?.toString() ??
         "";
-
+  
     return formatDistance(distance);
   }
 
@@ -662,6 +732,12 @@ class _DetailKostPageState extends State<DetailKostPage> {
       return Icons.storefront_rounded;
     }
 
+    if (text.contains("masjid") ||
+        text.contains("gereja") ||
+        text.contains("ibadah")) {
+      return Icons.place_rounded;
+    }
+
     if (text.contains("halte")) {
       return Icons.directions_bus_filled_rounded;
     }
@@ -676,25 +752,81 @@ class _DetailKostPageState extends State<DetailKostPage> {
   IconData getFacilityIcon(String value) {
     final text = value.toLowerCase();
 
-    if (text.contains("wifi")) return Icons.wifi_rounded;
-    if (text.contains("cctv")) return Icons.videocam_rounded;
-    if (text.contains("parkir motor")) return Icons.two_wheeler_rounded;
-    if (text.contains("parkir mobil")) return Icons.directions_car_rounded;
-    if (text.contains("parkir")) return Icons.local_parking_rounded;
-    if (text.contains("dapur")) return Icons.kitchen_rounded;
-    if (text.contains("laundry")) return Icons.local_laundry_service_rounded;
-    if (text.contains("ruang tamu")) return Icons.weekend_rounded;
-    if (text.contains("keamanan")) return Icons.security_rounded;
-    if (text.contains("mushola")) return Icons.mosque_rounded;
-    if (text.contains("ac")) return Icons.ac_unit_rounded;
-    if (text.contains("tv")) return Icons.tv_rounded;
-    if (text.contains("kasur")) return Icons.bed_rounded;
-    if (text.contains("lemari")) return Icons.inventory_2_rounded;
-    if (text.contains("meja")) return Icons.table_restaurant_rounded;
-    if (text.contains("kursi")) return Icons.chair_rounded;
-    if (text.contains("kulkas")) return Icons.kitchen_rounded;
-    if (text.contains("kamar mandi")) return Icons.bathtub_rounded;
-    if (text.contains("24")) return Icons.watch_later_rounded;
+    if (text.contains("24") || text.contains("24 jam")) {
+      return Icons.watch_later_rounded;
+    }
+
+    if (text.contains("wifi")) {
+      return Icons.wifi_rounded;
+    }
+
+    if (text.contains("cctv")) {
+      return Icons.videocam_rounded;
+    }
+
+    if (text.contains("parkir motor")) {
+      return Icons.two_wheeler_rounded;
+    }
+
+    if (text.contains("parkir mobil")) {
+      return Icons.directions_car_rounded;
+    }
+
+    if (text.contains("parkir")) {
+      return Icons.local_parking_rounded;
+    }
+
+    if (text.contains("dapur")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("laundry")) {
+      return Icons.local_laundry_service_rounded;
+    }
+
+    if (text.contains("ruang tamu")) {
+      return Icons.weekend_rounded;
+    }
+
+    if (text.contains("keamanan")) {
+      return Icons.security_rounded;
+    }
+
+    if (text.contains("mushola")) {
+      return Icons.mosque_rounded;
+    }
+
+    if (text.contains("ac")) {
+      return Icons.ac_unit_rounded;
+    }
+
+    if (text.contains("tv")) {
+      return Icons.tv_rounded;
+    }
+
+    if (text.contains("kasur")) {
+      return Icons.bed_rounded;
+    }
+
+    if (text.contains("lemari")) {
+      return Icons.inventory_2_rounded;
+    }
+
+    if (text.contains("meja")) {
+      return Icons.table_restaurant_rounded;
+    }
+
+    if (text.contains("kursi")) {
+      return Icons.chair_rounded;
+    }
+
+    if (text.contains("kulkas")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("kamar mandi")) {
+      return Icons.bathtub_rounded;
+    }
 
     return Icons.check_circle_outline_rounded;
   }
@@ -706,75 +838,272 @@ class _DetailKostPageState extends State<DetailKostPage> {
   ) {
     final text = "$title $description $sectionTitle".toLowerCase();
 
-    if (text.contains("tamu")) return Icons.groups_rounded;
-    if (text.contains("lapor") || text.contains("izin")) {
+    if (text.contains("tamu") || text.contains("guest")) {
+      return Icons.groups_rounded;
+    }
+
+    if (text.contains("lapor") ||
+        text.contains("izin") ||
+        text.contains("identitas") ||
+        text.contains("ktp")) {
       return Icons.assignment_ind_rounded;
     }
-    if (text.contains("rokok")) return Icons.smoke_free_rounded;
-    if (text.contains("hewan") || text.contains("peliharaan")) {
+
+    if (text.contains("rokok") || text.contains("merokok")) {
+      return Icons.smoke_free_rounded;
+    }
+
+    if (text.contains("hewan") ||
+        text.contains("peliharaan") ||
+        text.contains("binatang")) {
       return Icons.pets_rounded;
     }
-    if (text.contains("bersih") || text.contains("sampah")) {
+
+    if (text.contains("bersih") ||
+        text.contains("kebersihan") ||
+        text.contains("sampah")) {
       return Icons.cleaning_services_rounded;
     }
-    if (text.contains("jam") || text.contains("malam")) {
+
+    if (text.contains("jam") ||
+        text.contains("malam") ||
+        text.contains("pulang") ||
+        text.contains("batas")) {
       return Icons.schedule_rounded;
     }
-    if (text.contains("bayar") || text.contains("sewa")) {
+
+    if (text.contains("bayar") ||
+        text.contains("pembayaran") ||
+        text.contains("uang") ||
+        text.contains("sewa")) {
       return Icons.payments_rounded;
     }
-    if (text.contains("parkir")) return Icons.local_parking_rounded;
-    if (text.contains("kunci")) return Icons.key_rounded;
-    if (text.contains("dapur")) return Icons.kitchen_rounded;
-    if (text.contains("kamar mandi")) return Icons.bathtub_rounded;
-    if (text.contains("kamar")) return Icons.meeting_room_rounded;
-    if (text.contains("berisik") || text.contains("gaduh")) {
+
+    if (text.contains("parkir")) {
+      return Icons.local_parking_rounded;
+    }
+
+    if (text.contains("kunci")) {
+      return Icons.key_rounded;
+    }
+
+    if (text.contains("dapur")) {
+      return Icons.kitchen_rounded;
+    }
+
+    if (text.contains("kamar mandi") || text.contains("mandi")) {
+      return Icons.bathtub_rounded;
+    }
+
+    if (text.contains("kamar")) {
+      return Icons.meeting_room_rounded;
+    }
+
+    if (text.contains("berisik") ||
+        text.contains("gaduh") ||
+        text.contains("musik") ||
+        text.contains("suara")) {
       return Icons.volume_off_rounded;
     }
-    if (text.contains("rusak")) return Icons.build_circle_rounded;
-    if (text.contains("listrik")) return Icons.electrical_services_rounded;
-    if (text.contains("air")) return Icons.water_drop_rounded;
+
+    if (text.contains("rusak") ||
+        text.contains("kerusakan") ||
+        text.contains("barang")) {
+      return Icons.build_circle_rounded;
+    }
+
+    if (text.contains("listrik")) {
+      return Icons.electrical_services_rounded;
+    }
+
+    if (text.contains("air")) {
+      return Icons.water_drop_rounded;
+    }
+
+    if (text.contains("kost") || text.contains("kos")) {
+      return Icons.rule_rounded;
+    }
 
     return Icons.gavel_rounded;
+  }
+
+  void showMessage(String message, {bool success = false}) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: success ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
+  Future<void> deleteKost() async {
+    try {
+      final token = await ApiService().getToken();
+      final id = (detail ?? widget.kost)['id'] ?? widget.kost['id'];
+
+      if (id == null) {
+        showMessage("ID kost tidak ditemukan");
+        return;
+      }
+
+      final response = await http.delete(
+        Uri.parse("${ApiService.baseUrl}/properties/$id"),
+        headers: {
+          "Accept": "application/json",
+          if (token != null) "Authorization": "Bearer $token",
+        },
+      );
+
+      debugPrint("DELETE OWNER STATUS:");
+      debugPrint(response.statusCode.toString());
+
+      debugPrint("DELETE OWNER BODY:");
+      debugPrint(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        if (!mounted) return;
+
+        Navigator.pop(context, true);
+      } else {
+        showMessage("Gagal menghapus kost");
+      }
+    } catch (e) {
+      debugPrint("DELETE OWNER ERROR:");
+      debugPrint(e.toString());
+
+      showMessage("Gagal menghapus kost");
+    }
+  }
+
+  void goEdit() {
+    final d = detail ?? widget.kost;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => EditKostPage(kost: d)),
+    ).then((value) {
+      if (value == true) {
+        getDetail();
+      }
+    });
+  }
+
+  void goToRatingPage() {
+    final d = detail ?? widget.kost;
+  
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RatingKos(
+          kost: Map<String, dynamic>.from(d),
+        ),
+      ),
+    ).then((_) {
+      getDetail();
+    });
+  }
+  
+  Future<void> showDeleteDialog() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+          title: const Text(
+            "Hapus Kost?",
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            "Yakin ingin menghapus kost ini? Data yang sudah dihapus tidak bisa dikembalikan.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text("Batal"),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              onPressed: () {
+                Navigator.pop(context, true);
+              },
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: const Text("Hapus"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ok == true) {
+      deleteKost();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final d = detail ?? {};
 
-    final title = d['title']?.toString() ?? "Detail Kost";
+    final title =
+        d['title']?.toString() ?? d['name']?.toString() ?? "Detail Kost";
+
     final description = d['description']?.toString() ?? "";
+
     final address = d['address']?.toString() ?? "";
+
     final maxPeople = d['max_people']?.toString() ?? "";
+
     final status = d['status']?.toString() ?? "active";
+
+    final city = d['city'];
+
+    final cityName = city is Map
+        ? city['name']?.toString() ?? ""
+        : d['city_name']?.toString() ?? "";
+
+    final ratingAvg = getRatingAverage(d['rating_avg']);
+
+    final ratingCount = getRatingCount(d['rating_count']);
 
     final kostFacilities = parseStringList(
       d['kost_features'] ??
           d['kost_facilities'] ??
           d['property_features'] ??
           d['features'] ??
+          d['feature'] ??
+          d['facilities'] ??
           d['facility'],
     );
 
     final roomFacilities = parseStringList(
-      d['place_features'] ??
-          d['room_facilities'] ??
-          d['room_features'] ??
-          d['place_facilities'],
+      d['place_features'] ?? d['room_facilities'] ?? d['place_facilities'],
     );
 
     final kostRules = parsePolicyList(
       d['kost_policies'] ??
           d['kost_rules'] ??
           d['property_policies'] ??
-          d['rules'],
+          d['policies'] ??
+          d['rules'] ??
+          d['rule'],
     );
 
     final roomRules = parsePolicyList(
-      d['place_policies'] ??
-          d['room_rules'] ??
-          d['room_policies'] ??
-          d['policies'],
+      d['place_policies'] ?? d['room_rules'] ?? d['place_rules'],
     );
 
     return Scaffold(
@@ -804,30 +1133,43 @@ class _DetailKostPageState extends State<DetailKostPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     buildImageHeader(title: title, status: status),
+
                     const SizedBox(height: 20),
-                    infoSection(
+
+                    priceSection(),
+
+                    infoSummarySection(
                       title: title,
-                      price: getPrice(),
-                      maxPeople: maxPeople,
+                      cityName: cityName,
                       address: address,
-                      description: description,
+                      maxPeople: maxPeople,
+                      status: status,
+                      ratingAvg: ratingAvg,
+                      ratingCount: ratingCount,
                     ),
+
                     nearbyPlacesSection(items: nearbyPlaces),
+
+                    descriptionSection(description),
+
                     facilitySection(
                       title: "Fasilitas Kost",
                       icon: Icons.maps_home_work_outlined,
                       items: kostFacilities,
                     ),
+
                     facilitySection(
                       title: "Fasilitas Kamar",
                       icon: Icons.bed_outlined,
                       items: roomFacilities,
                     ),
+
                     policySection(
                       title: "Aturan Kost",
                       icon: Icons.rule_outlined,
                       policies: kostRules,
                     ),
+
                     policySection(
                       title: "Aturan Kamar",
                       icon: Icons.meeting_room_outlined,
@@ -842,7 +1184,7 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
   Widget buildBottomActionBar() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -857,46 +1199,21 @@ class _DetailKostPageState extends State<DetailKostPage> {
         child: Row(
           children: [
             Expanded(
-              child: SizedBox(
-                height: 52,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  onPressed: goEdit,
-                  icon: const Icon(Icons.edit_note_rounded),
-                  label: const Text(
-                    "Edit",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
+              child: bottomActionButton(
+                label: "Edit",
+                icon: Icons.edit_note_rounded,
+                isPrimary: true,
+                onTap: goEdit,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             Expanded(
-              child: SizedBox(
-                height: 52,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                  ),
-                  onPressed: showDeleteDialog,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text(
-                    "Hapus",
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
+              child: bottomActionButton(
+                label: "Hapus",
+                icon: Icons.delete_outline_rounded,
+                isPrimary: false,
+                isDanger: true,
+                onTap: showDeleteDialog,
               ),
             ),
           ],
@@ -905,187 +1222,667 @@ class _DetailKostPageState extends State<DetailKostPage> {
     );
   }
 
-  Future<void> showDeleteDialog() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text("Hapus Kost?"),
-          content: const Text(
-            "Yakin ingin menghapus kost ini? Data yang dihapus tidak bisa dikembalikan.",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
-              child: const Text("Batal"),
-            ),
-            ElevatedButton(
+  Widget bottomActionButton({
+    required String label,
+    required IconData icon,
+    required bool isPrimary,
+    required VoidCallback onTap,
+    bool isDanger = false,
+  }) {
+    return SizedBox(
+      height: 54,
+      child: isPrimary
+          ? ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+                backgroundColor: primaryColor,
                 foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
               ),
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
-              child: const Text("Hapus"),
+              onPressed: onTap,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 19),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : OutlinedButton(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDanger ? Colors.red : primaryColor,
+                side: BorderSide(
+                  color: isDanger
+                      ? Colors.red.withOpacity(0.35)
+                      : primaryColor.withOpacity(0.28),
+                  width: 1.3,
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                ),
+              ),
+              onPressed: onTap,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 19),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget priceSection() {
+    final prices = getPriceItems();
+
+    return sectionCard(
+      title: "Harga Sewa",
+      icon: Icons.payments_outlined,
+      children: [
+        if (prices.isEmpty)
+          emptyMiniState(
+            icon: Icons.payments_outlined,
+            text: "Harga belum ditambahkan",
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: prices.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.85,
+            ),
+            itemBuilder: (context, index) {
+              return priceItemCard(prices[index]);
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget priceItemCard(_PriceItem item) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [softGreen, Colors.white],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: primaryColor.withOpacity(0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(item.icon, color: Colors.white, size: 17),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            item.price,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: primaryColor,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            item.subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontWeight: FontWeight.w600,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget infoSummarySection({
+    required String title,
+    required String cityName,
+    required String address,
+    required String maxPeople,
+    required String status,
+    required double ratingAvg,
+    required int ratingCount,
+  }) {
+    final ratingText = ratingAvg <= 0
+        ? "Belum ada"
+        : "${ratingAvg.toStringAsFixed(1)} ($ratingCount)";
+
+    final fullAddress = address.isEmpty
+        ? "Belum ditambahkan"
+        : cityName.isEmpty
+        ? address
+        : "$address, $cityName";
+
+    return sectionCard(
+      title: "Informasi Kost",
+      icon: Icons.info_outline_rounded,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: miniInfoCard(
+                icon: Icons.home_work_outlined,
+                title: "Nama",
+                value: title,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: miniInfoCard(
+                icon: Icons.location_city_rounded,
+                title: "Kota",
+                value: cityName.isEmpty ? "Belum ada" : cityName,
+              ),
             ),
           ],
-        );
-      },
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: miniInfoCard(
+                icon: Icons.people_alt_outlined,
+                title: "Kapasitas",
+                value: maxPeople.isEmpty ? "Belum ada" : "$maxPeople orang",
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: miniInfoCard(
+                icon: Icons.verified_rounded,
+                title: "Status",
+                value: status.toLowerCase() == "active"
+                    ? "Tersedia"
+                    : normalizeText(status),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: miniInfoCard(
+                icon: Icons.star_rounded,
+                title: "Rating",
+                value: ratingText,
+                onTap: goToRatingPage,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: miniInfoCard(
+                icon: Icons.sell_outlined,
+                title: "Sewa",
+                value: getMainPrice(),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        fullInfoCard(
+          icon: Icons.location_on_outlined,
+          title: "Alamat Lengkap",
+          value: fullAddress,
+        ),
+      ],
     );
+  }
 
-    if (ok == true) {
-      deleteKost();
+  Widget miniInfoCard({
+    required IconData icon,
+    required String title,
+    required String value,
+    VoidCallback? onTap,
+  }) {
+    final card = Container(
+      height: 94,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: primaryColor, size: 21),
+              const Spacer(),
+              if (onTap != null)
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: primaryColor.withOpacity(0.65),
+                  size: 13,
+                ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade600,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  
+    if (onTap == null) {
+      return card;
     }
+  
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: card,
+      ),
+    );
+  }
+
+  Widget fullInfoCard({
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: primaryColor, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget nearbyPlacesSection({required List<dynamic> items}) {
+    return sectionCard(
+      title: "Lokasi Terdekat",
+      icon: Icons.near_me_outlined,
+      children: [
+        if (items.isEmpty)
+          emptyMiniState(
+            icon: Icons.location_off_outlined,
+            text: "Lokasi terdekat belum ditambahkan",
+          )
+        else
+          Column(
+            children: [
+              SizedBox(
+                height: 132,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+
+                    final name = getNearbyName(item);
+                    final type = getNearbyType(item);
+                    final distance = getNearbyDistance(item);
+                    final icon = getNearbyIcon(type, name);
+
+                    return nearbyPlaceCard(
+                      name: name,
+                      type: type,
+                      distance: distance,
+                      icon: icon,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  Widget nearbyPlaceCard({
+    required String name,
+    required String type,
+    required String distance,
+    required IconData icon,
+  }) {
+    return Container(
+      width: 215,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [const Color(0xFFF4F6FA), softGreen.withOpacity(0.65)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                height: 42,
+                width: 42,
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const Spacer(),
+              if (type.trim().isNotEmpty && type != "null")
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: primaryColor.withOpacity(0.08)),
+                  ),
+                  child: Text(
+                    normalizeText(type),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(
+            name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+              height: 1.2,
+            ),
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              Icon(Icons.route_rounded, color: primaryColor, size: 17),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  distance.trim().isEmpty
+                      ? "Jarak belum tersedia"
+                      : "$distance KM dari kos",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget descriptionSection(String description) {
+    return sectionCard(
+      title: "Deskripsi",
+      icon: Icons.description_outlined,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F6FA),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Text(
+            description.trim().isEmpty
+                ? "Deskripsi belum ditambahkan"
+                : description,
+            style: TextStyle(
+              color: description.trim().isEmpty
+                  ? Colors.grey.shade600
+                  : Colors.black87,
+              fontWeight: FontWeight.w600,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget buildImageHeader({required String title, required String status}) {
     final int imageCount = images.length > 15 ? 15 : images.length;
 
-    return Container(
-      height: 280,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 24 * (1 - value)),
+            child: child,
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: images.isEmpty
-                  ? imageEmptyState()
-                  : PageView.builder(
-                      scrollDirection: Axis.horizontal,
-                      physics: const PageScrollPhysics(),
-                      itemCount: imageCount,
-                      onPageChanged: (index) {
-                        setState(() {
-                          currentImageIndex = index;
-                        });
-                      },
-                      itemBuilder: (context, index) {
-                        final img = fixUrl(images[index]);
+        );
+      },
+      child: Container(
+        height: 280,
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: images.isEmpty
+                    ? imageEmptyState()
+                    : PageView.builder(
+                        scrollDirection: Axis.horizontal,
+                        physics: const PageScrollPhysics(),
+                        itemCount: imageCount,
+                        onPageChanged: (index) {
+                          setState(() {
+                            currentImageIndex = index;
+                          });
+                        },
+                        itemBuilder: (context, index) {
+                          final img = fixUrl(images[index]);
 
-                        if (img.trim().isEmpty) {
-                          return imageEmptyState(
-                            icon: Icons.broken_image_outlined,
-                            text: "Gambar gagal dimuat",
-                          );
-                        }
+                          if (img.isEmpty) {
+                            return imageEmptyState(
+                              icon: Icons.broken_image_outlined,
+                              text: "Gambar gagal dimuat",
+                            );
+                          }
 
-                        return GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            openImageViewer(index);
-                          },
-                          child: Hero(
-                            tag: "owner-detail-kost-image-$index",
-                            child: Image.network(
-                              img,
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              loadingBuilder:
-                                  (context, child, loadingProgress) {
-                                    if (loadingProgress == null) {
-                                      return child;
-                                    }
+                          return GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              openImageViewer(index);
+                            },
+                            child: Hero(
+                              tag: "owner-detail-kost-image-$index",
+                              child: Image.network(
+                                img,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                loadingBuilder:
+                                    (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
 
-                                    return Container(
-                                      color: Colors.grey.shade200,
-                                      child: Center(
-                                        child: CircularProgressIndicator(
-                                          color: primaryColor,
+                                      return Container(
+                                        color: Colors.grey.shade200,
+                                        child: Center(
+                                          child: CircularProgressIndicator(
+                                            color: primaryColor,
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                  },
-                              errorBuilder: (_, __, ___) {
-                                return imageEmptyState(
-                                  icon: Icons.broken_image_outlined,
-                                  text: "Gambar gagal dimuat",
-                                );
-                              },
+                                      );
+                                    },
+                                errorBuilder: (_, __, ___) {
+                                  return imageEmptyState(
+                                    icon: Icons.broken_image_outlined,
+                                    text: "Gambar gagal dimuat",
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.black.withOpacity(0.05),
-                        Colors.black.withOpacity(0.58),
-                      ],
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
+                          );
+                        },
+                      ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.black.withOpacity(0.05),
+                          Colors.black.withOpacity(0.60),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              top: 16,
-              left: 16,
-              child: IgnorePointer(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: status.toLowerCase() == "active"
-                        ? Colors.green.withOpacity(0.95)
-                        : Colors.orange.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        status.toLowerCase() == "active"
-                            ? Icons.check_circle
-                            : Icons.info_outline,
-                        color: Colors.white,
-                        size: 15,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        status.toLowerCase() == "active"
-                            ? "Aktif"
-                            : normalizeText(status),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            if (images.isNotEmpty)
               Positioned(
                 top: 16,
-                right: 16,
+                left: 16,
                 child: IgnorePointer(
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -1093,23 +1890,29 @@ class _DetailKostPageState extends State<DetailKostPage> {
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.92),
+                      color: status.toLowerCase() == "active"
+                          ? Colors.green.withOpacity(0.95)
+                          : Colors.orange.withOpacity(0.95),
                       borderRadius: BorderRadius.circular(30),
                     ),
                     child: Row(
                       children: [
                         Icon(
-                          Icons.zoom_out_map_rounded,
-                          size: 16,
-                          color: primaryColor,
+                          status.toLowerCase() == "active"
+                              ? Icons.check_circle
+                              : Icons.info_outline,
+                          color: Colors.white,
+                          size: 15,
                         ),
                         const SizedBox(width: 5),
                         Text(
-                          "${currentImageIndex + 1}/$imageCount",
-                          style: TextStyle(
-                            color: primaryColor,
-                            fontWeight: FontWeight.bold,
+                          status.toLowerCase() == "active"
+                              ? "Tersedia"
+                              : normalizeText(status),
+                          style: const TextStyle(
+                            color: Colors.white,
                             fontSize: 12,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ],
@@ -1117,58 +1920,94 @@ class _DetailKostPageState extends State<DetailKostPage> {
                   ),
                 ),
               ),
-            Positioned(
-              left: 18,
-              right: 18,
-              bottom: imageCount > 1 ? 40 : 18,
-              child: IgnorePointer(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 27,
-                    fontWeight: FontWeight.bold,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-            ),
-            if (imageCount > 1)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 14,
-                child: IgnorePointer(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const NeverScrollableScrollPhysics(),
+              if (images.isNotEmpty)
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.92),
+                        borderRadius: BorderRadius.circular(30),
+                      ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(imageCount, (index) {
-                          final isActive = currentImageIndex == index;
-
-                          return AnimatedContainer(
-                            duration: const Duration(milliseconds: 250),
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            height: 8,
-                            width: isActive ? 22 : 8,
-                            decoration: BoxDecoration(
-                              color: isActive
-                                  ? Colors.white
-                                  : Colors.white.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(30),
+                        children: [
+                          Icon(
+                            Icons.zoom_out_map_rounded,
+                            size: 16,
+                            color: primaryColor,
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            "${currentImageIndex + 1}/$imageCount",
+                            style: TextStyle(
+                              color: primaryColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
                             ),
-                          );
-                        }),
+                          ),
+                        ],
                       ),
                     ),
                   ),
                 ),
+              Positioned(
+                left: 18,
+                right: 18,
+                bottom: imageCount > 1 ? 40 : 18,
+                child: IgnorePointer(
+                  child: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 27,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
               ),
-          ],
+              if (imageCount > 1)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 14,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(imageCount, (index) {
+                            final isActive = currentImageIndex == index;
+
+                            return AnimatedContainer(
+                              duration: const Duration(milliseconds: 250),
+                              margin: const EdgeInsets.symmetric(horizontal: 4),
+                              height: 8,
+                              width: isActive ? 22 : 8,
+                              decoration: BoxDecoration(
+                                color: isActive
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(30),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1197,239 +2036,70 @@ class _DetailKostPageState extends State<DetailKostPage> {
     );
   }
 
-  Widget infoSection({
-    required String title,
-    required String price,
-    required String maxPeople,
-    required String address,
-    required String description,
-  }) {
-    return sectionCard(
-      title: "Informasi Kost",
-      icon: Icons.info_outline,
-      children: [
-        infoTile(
-          icon: Icons.home_work_outlined,
-          title: "Nama Kost",
-          value: title,
-        ),
-        infoTile(icon: Icons.payments_outlined, title: "Harga", value: price),
-        infoTile(
-          icon: Icons.people_alt_outlined,
-          title: "Kapasitas",
-          value: maxPeople.isEmpty ? "Belum ditambahkan" : "$maxPeople orang",
-        ),
-        infoTile(
-          icon: Icons.location_on_outlined,
-          title: "Alamat",
-          value: address.isEmpty ? "Alamat belum ditambahkan" : address,
-        ),
-        infoTile(
-          icon: Icons.description_outlined,
-          title: "Deskripsi",
-          value: description.isEmpty
-              ? "Deskripsi belum ditambahkan"
-              : description,
-        ),
-      ],
-    );
-  }
-
   Widget sectionCard({
     required String title,
     required IconData icon,
     required List<Widget> children,
   }) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 650),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - value)),
+            child: child,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: softGreen,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, color: primaryColor, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          ...children,
-        ],
-      ),
-    );
-  }
-
-  Widget infoTile({
-    required IconData icon,
-    required String title,
-    required String value,
-  }) {
-    final bool emptyValue =
-        value.trim().isEmpty ||
-        value.toLowerCase().contains("belum") ||
-        value.toLowerCase().contains("tersedia");
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F6FA),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: primaryColor, size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 18),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: softGreen,
+                    borderRadius: BorderRadius.circular(14),
                   ),
+                  child: Icon(icon, color: primaryColor, size: 22),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  value.trim().isEmpty ? "Belum ditambahkan" : value,
-                  style: TextStyle(
-                    color: emptyValue ? Colors.grey.shade600 : Colors.black,
-                    fontWeight: FontWeight.bold,
-                    height: 1.4,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: primaryColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 18),
+            ...children,
+          ],
+        ),
       ),
-    );
-  }
-
-  Widget nearbyPlacesSection({required List<dynamic> items}) {
-    return sectionCard(
-      title: "Lokasi Terdekat",
-      icon: Icons.near_me_outlined,
-      children: [
-        if (items.isEmpty)
-          emptyMiniState(
-            icon: Icons.location_off_outlined,
-            text: "Lokasi terdekat belum ditambahkan",
-          )
-        else
-          Column(
-            children: items.map((item) {
-              final name = getNearbyName(item);
-              final type = getNearbyType(item);
-              final distance = getNearbyDistance(item);
-              final icon = getNearbyIcon(type, name);
-
-              return Container(
-                width: double.infinity,
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF4F6FA),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 46,
-                      width: 46,
-                      decoration: BoxDecoration(
-                        color: softGreen,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(icon, color: primaryColor, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (type.trim().isNotEmpty && type != "null")
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: primaryColor.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                              child: Text(
-                                normalizeText(type),
-                                style: TextStyle(
-                                  color: primaryColor,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          Text(
-                            name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            distance.trim().isEmpty
-                                ? "Jarak belum ditambahkan"
-                                : "$distance KM dari kost",
-                            style: TextStyle(
-                              color: Colors.grey.shade700,
-                              height: 1.4,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-      ],
     );
   }
 
@@ -1453,27 +2123,27 @@ class _DetailKostPageState extends State<DetailKostPage> {
             physics: const NeverScrollableScrollPhysics(),
             itemCount: items.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 0.95,
+              crossAxisCount: 4,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 0.82,
             ),
             itemBuilder: (context, index) {
               final item = normalizeText(items[index]);
 
               return Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF4F6FA),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(15),
                   border: Border.all(color: Colors.grey.shade200),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      height: 44,
-                      width: 44,
+                      height: 34,
+                      width: 34,
                       decoration: BoxDecoration(
                         color: softGreen,
                         shape: BoxShape.circle,
@@ -1481,10 +2151,10 @@ class _DetailKostPageState extends State<DetailKostPage> {
                       child: Icon(
                         getFacilityIcon(item),
                         color: primaryColor,
-                        size: 23,
+                        size: 18,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Text(
                       item,
                       maxLines: 2,
@@ -1492,9 +2162,9 @@ class _DetailKostPageState extends State<DetailKostPage> {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: primaryColor,
-                        fontSize: 12,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        height: 1.2,
+                        height: 1.15,
                       ),
                     ),
                   ],
@@ -1565,7 +2235,7 @@ class _DetailKostPageState extends State<DetailKostPage> {
                         children: [
                           Text(
                             policyTitle.isEmpty
-                                ? "Aturan belum diberi judul"
+                                ? "Aturan"
                                 : normalizeText(policyTitle),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
@@ -1672,23 +2342,24 @@ class _DetailKostPageState extends State<DetailKostPage> {
   }
 }
 
-class FullscreenKostImageViewer extends StatefulWidget {
+class FullscreenOwnerKostImageViewer extends StatefulWidget {
   final List<String> imageUrls;
   final int initialIndex;
 
-  const FullscreenKostImageViewer({
+  const FullscreenOwnerKostImageViewer({
     super.key,
     required this.imageUrls,
     required this.initialIndex,
   });
 
   @override
-  State<FullscreenKostImageViewer> createState() =>
-      _FullscreenKostImageViewerState();
+  State<FullscreenOwnerKostImageViewer> createState() =>
+      _FullscreenOwnerKostImageViewerState();
 }
 
-class _FullscreenKostImageViewerState extends State<FullscreenKostImageViewer> {
-  late final PageController pageController;
+class _FullscreenOwnerKostImageViewerState
+    extends State<FullscreenOwnerKostImageViewer> {
+  late final PageController _pageController;
   late int currentIndex;
 
   @override
@@ -1696,12 +2367,12 @@ class _FullscreenKostImageViewerState extends State<FullscreenKostImageViewer> {
     super.initState();
 
     currentIndex = widget.initialIndex;
-    pageController = PageController(initialPage: widget.initialIndex);
+    _pageController = PageController(initialPage: widget.initialIndex);
   }
 
   @override
   void dispose() {
-    pageController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -1718,7 +2389,7 @@ class _FullscreenKostImageViewerState extends State<FullscreenKostImageViewer> {
       body: Stack(
         children: [
           PageView.builder(
-            controller: pageController,
+            controller: _pageController,
             itemCount: total,
             onPageChanged: (index) {
               setState(() {
@@ -1752,9 +2423,7 @@ class _FullscreenKostImageViewerState extends State<FullscreenKostImageViewer> {
                       width: double.infinity,
                       height: double.infinity,
                       loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) {
-                          return child;
-                        }
+                        if (loadingProgress == null) return child;
 
                         return const Center(
                           child: CircularProgressIndicator(color: Colors.white),
@@ -1853,4 +2522,18 @@ class _FullscreenKostImageViewerState extends State<FullscreenKostImageViewer> {
       ),
     );
   }
+}
+
+class _PriceItem {
+  final String title;
+  final String price;
+  final String subtitle;
+  final IconData icon;
+
+  const _PriceItem({
+    required this.title,
+    required this.price,
+    required this.subtitle,
+    required this.icon,
+  });
 }

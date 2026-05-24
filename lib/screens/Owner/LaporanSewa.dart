@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:koskaki/service/api_service.dart';
@@ -23,67 +23,12 @@ class _LaporanSewaState extends State<LaporanSewa> {
   List<Map<String, dynamic>> reports = [];
   Map<int, Map<String, dynamic>> rentalHistoryById = {};
 
-  // Menyimpan card mana yang sedang dibuka/extend
   Set<int> expandedReportKeys = {};
 
   @override
   void initState() {
     super.initState();
     fetchRentalBookings();
-  }
-
-  int getReportKey(Map<String, dynamic> report) {
-    final booking = toMap(report["booking"]) ?? {};
-    final payment = toMap(report["payment"]) ?? {};
-
-    final paymentId = parseIntValue(payment["id"]);
-    final bookingId = parseIntValue(booking["id"]);
-
-    if (paymentId > 0) return paymentId;
-    if (bookingId > 0) return bookingId;
-
-    return report.hashCode;
-  }
-
-  void toggleReportExpanded(Map<String, dynamic> report) {
-    final key = getReportKey(report);
-
-    setState(() {
-      if (expandedReportKeys.contains(key)) {
-        expandedReportKeys.remove(key);
-      } else {
-        expandedReportKeys.add(key);
-      }
-    });
-  }
-
-  Widget extendShortButton({
-    required bool isExpanded,
-    required VoidCallback onTap,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      height: 48,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: AnimatedRotation(
-          turns: isExpanded ? 0.5 : 0,
-          duration: const Duration(milliseconds: 220),
-          child: Icon(Icons.keyboard_arrow_down_rounded, color: primaryColor),
-        ),
-        label: Text(
-          isExpanded ? "Short" : "Extend",
-          style: TextStyle(color: primaryColor, fontWeight: FontWeight.w900),
-        ),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: primaryColor.withOpacity(0.35)),
-          backgroundColor: const Color(0xFFF4F6FA),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(17),
-          ),
-        ),
-      ),
-    );
   }
 
   String get baseUrlWithoutApi {
@@ -126,6 +71,9 @@ class _LaporanSewaState extends State<LaporanSewa> {
       "Accept": "application/json",
       "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
     };
   }
 
@@ -156,6 +104,8 @@ class _LaporanSewaState extends State<LaporanSewa> {
       if (value["bookings"] is List) return value["bookings"];
       if (value["items"] is List) return value["items"];
       if (value["results"] is List) return value["results"];
+      if (value["invoices"] is List) return value["invoices"];
+      if (value["payments"] is List) return value["payments"];
     }
 
     return [];
@@ -169,6 +119,24 @@ class _LaporanSewaState extends State<LaporanSewa> {
     if (cleaned.isEmpty) return 0;
 
     return int.tryParse(cleaned) ?? 0;
+  }
+
+  double parseMoneyValue(dynamic value) {
+    if (value == null) return 0;
+
+    String raw = value.toString().trim();
+
+    if (raw.isEmpty || raw == "null") return 0;
+
+    raw = raw.replaceAll("Rp", "").trim();
+
+    if (RegExp(r',\d{1,2}$').hasMatch(raw)) {
+      raw = raw.replaceAll(".", "").replaceAll(",", ".");
+    } else if (!RegExp(r'\.\d{1,2}$').hasMatch(raw)) {
+      raw = raw.replaceAll(".", "").replaceAll(",", "");
+    }
+
+    return double.tryParse(raw) ?? 0;
   }
 
   String cleanLower(dynamic value) {
@@ -185,90 +153,18 @@ class _LaporanSewaState extends State<LaporanSewa> {
     return text;
   }
 
-  int getRentalBookingIdFromData(Map<String, dynamic> data) {
-    final rentalBooking =
-        toMap(data["rental_booking"]) ??
-        toMap(data["rentalBooking"]) ??
-        toMap(data["booking"]);
+  DateTime? parseNullableDate(dynamic value) {
+    if (value == null) return null;
 
-    return parseIntValue(
-      data["rental_booking_id"] ??
-          data["rentalBookingId"] ??
-          data["booking_id"] ??
-          rentalBooking?["id"] ??
-          data["id"],
-    );
+    final text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return null;
+
+    return DateTime.tryParse(text);
   }
 
-  Map<String, dynamic> getPropertyFromHistory(Map<String, dynamic> history) {
-    final rentalBooking =
-        toMap(history["rental_booking"]) ??
-        toMap(history["rentalBooking"]) ??
-        toMap(history["booking"]);
-
-    return toMap(history["place_property"]) ??
-        toMap(history["placeProperty"]) ??
-        toMap(history["property"]) ??
-        toMap(history["kos"]) ??
-        toMap(history["kost"]) ??
-        toMap(rentalBooking?["place_property"]) ??
-        toMap(rentalBooking?["placeProperty"]) ??
-        toMap(rentalBooking?["property"]) ??
-        toMap(rentalBooking?["kos"]) ??
-        toMap(rentalBooking?["kost"]) ??
-        {};
-  }
-
-  Future<Map<int, Map<String, dynamic>>> fetchRentalBookingHistoryMap(
-    String token,
-  ) async {
-    final Map<int, Map<String, dynamic>> result = {};
-
-    try {
-      final url = Uri.parse("${ApiService.baseUrl}/rental-bookings/history");
-
-      debugPrint("GET RENTAL BOOKINGS HISTORY URL:");
-      debugPrint(url.toString());
-
-      final response = await http
-          .get(url, headers: authHeaders(token))
-          .timeout(const Duration(seconds: 20));
-
-      debugPrint("GET RENTAL BOOKINGS HISTORY STATUS:");
-      debugPrint(response.statusCode.toString());
-
-      debugPrint("GET RENTAL BOOKINGS HISTORY BODY:");
-      debugPrint(response.body);
-
-      if (response.statusCode != 200) {
-        return result;
-      }
-
-      final decoded = jsonDecode(response.body);
-      final histories = parseDynamicList(decoded);
-
-      for (final item in histories) {
-        final history = toMap(item);
-
-        if (history == null) continue;
-
-        final rentalBookingId = getRentalBookingIdFromData(history);
-
-        if (rentalBookingId > 0) {
-          result[rentalBookingId] = history;
-        }
-      }
-
-      debugPrint("HISTORY MAP TOTAL:");
-      debugPrint(result.length.toString());
-
-      return result;
-    } catch (e) {
-      debugPrint("FETCH RENTAL BOOKING HISTORY ERROR:");
-      debugPrint(e.toString());
-
-      return result;
-    }
+  DateTime endOfDay(DateTime date) {
+    return DateTime(date.year, date.month, date.day, 23, 59, 59);
   }
 
   String parseResponseMessage(String body, String fallback) {
@@ -365,121 +261,143 @@ class _LaporanSewaState extends State<LaporanSewa> {
     return "${date.day} ${months[date.month - 1]} ${date.year}";
   }
 
-  Future<void> fetchRentalBookings() async {
-    if (!mounted) return;
+  int getRentalBookingIdFromData(Map<String, dynamic> data) {
+    final rentalBooking =
+        toMap(data["rental_booking"]) ??
+        toMap(data["rentalBooking"]) ??
+        toMap(data["booking"]);
+
+    return parseIntValue(
+      data["rental_booking_id"] ??
+          data["rentalBookingId"] ??
+          data["booking_id"] ??
+          rentalBooking?["id"] ??
+          data["id"],
+    );
+  }
+
+  int getReportKey(Map<String, dynamic> report) {
+    final booking = toMap(report["booking"]) ?? {};
+    final payment = toMap(report["payment"]) ?? {};
+    final invoice = toMap(report["invoice"]) ?? {};
+
+    final paymentId = parseIntValue(payment["id"]);
+    final invoiceId = parseIntValue(invoice["id"]);
+    final bookingId = parseIntValue(booking["id"]);
+
+    if (paymentId > 0) return paymentId;
+    if (invoiceId > 0) return invoiceId;
+    if (bookingId > 0) return bookingId;
+
+    return report.hashCode;
+  }
+
+  void toggleReportExpanded(Map<String, dynamic> report) {
+    final key = getReportKey(report);
 
     setState(() {
-      isLoading = true;
-    });
-
-    try {
-      final token = await getValidToken();
-
-      if (token == null || token.isEmpty) {
-        showMessage("Token tidak ditemukan, silakan login ulang");
-
-        if (!mounted) return;
-
-        setState(() {
-          reports = [];
-          isLoading = false;
-        });
-
-        return;
-      }
-
-      final historyMap = await fetchRentalBookingHistoryMap(token);
-
-      final url = Uri.parse("${ApiService.baseUrl}/rental-bookings");
-
-      debugPrint("GET RENTAL BOOKINGS FOR LAPORAN SEWA URL:");
-      debugPrint(url.toString());
-
-      final response = await http
-          .get(url, headers: authHeaders(token))
-          .timeout(const Duration(seconds: 20));
-
-      debugPrint("GET RENTAL BOOKINGS FOR LAPORAN SEWA STATUS:");
-      debugPrint(response.statusCode.toString());
-
-      debugPrint("GET RENTAL BOOKINGS FOR LAPORAN SEWA BODY:");
-      debugPrint(response.body);
-
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        final bookings = parseDynamicList(decoded);
-
-        final List<Map<String, dynamic>> pendingReports = [];
-
-        for (final item in bookings) {
-          final booking = toMap(item);
-
-          if (booking == null) continue;
-
-          final payment = getPendingPaymentFromBooking(booking);
-
-          if (payment == null) continue;
-
-          final invoice = getInvoiceFromBookingOrPayment(
-            booking: booking,
-            payment: payment,
-          );
-
-          final rentalBookingId = getRentalBookingIdFromData(booking);
-          final history = historyMap[rentalBookingId] ?? {};
-
-          debugPrint("MATCH HISTORY FOR BOOKING:");
-          debugPrint(
-            {
-              "rental_booking_id": rentalBookingId,
-              "has_history": history.isNotEmpty,
-              "history_property": getPropertyFromHistory(history),
-            }.toString(),
-          );
-
-          pendingReports.add({
-            "booking": booking,
-            "payment": payment,
-            "invoice": invoice,
-            "history": history,
-          });
-        }
-
-        if (!mounted) return;
-
-        setState(() {
-          rentalHistoryById = historyMap;
-          reports = pendingReports;
-        });
+      if (expandedReportKeys.contains(key)) {
+        expandedReportKeys.remove(key);
       } else {
-        showMessage(
-          parseResponseMessage(response.body, "Gagal mengambil pengajuan sewa"),
-        );
-
-        if (!mounted) return;
-
-        setState(() {
-          reports = [];
-        });
+        expandedReportKeys.add(key);
       }
-    } catch (e) {
-      debugPrint("FETCH RENTAL BOOKINGS ERROR:");
-      debugPrint(e.toString());
+    });
+  }
 
-      showMessage("Terjadi kesalahan saat mengambil pengajuan sewa");
+  bool isPendingPayment(Map<String, dynamic> payment) {
+    final status = cleanLower(payment["status"] ?? payment["payment_status"]);
 
-      if (!mounted) return;
+    return status == "pending" ||
+        status == "waiting_confirmation" ||
+        status == "waiting" ||
+        status == "unverified" ||
+        status == "waiting_verification" ||
+        status == "menunggu";
+  }
 
-      setState(() {
-        reports = [];
-      });
-    } finally {
-      if (!mounted) return;
+  double getInvoiceRemainingAmount(Map<String, dynamic> invoice) {
+    final remaining = parseMoneyValue(invoice["remaining_amount"]);
 
-      setState(() {
-        isLoading = false;
-      });
+    if (remaining > 0) return remaining;
+
+    final total = parseMoneyValue(
+      invoice["total_amount"] ?? invoice["amount"] ?? invoice["grand_total"],
+    );
+
+    final paid = parseMoneyValue(invoice["paid_amount"]);
+
+    final calculated = total - paid;
+
+    return calculated > 0 ? calculated : 0;
+  }
+
+  bool isOverdueInvoice(Map<String, dynamic> invoice) {
+    final status = cleanLower(invoice["status"]);
+
+    if (status == "overdue" || status == "terlambat") {
+      return true;
     }
+
+    final amount = getInvoiceRemainingAmount(invoice);
+
+    if (amount <= 0) return false;
+
+    final dueDate = parseNullableDate(
+      invoice["due_date"] ??
+          invoice["dueDate"] ??
+          invoice["payment_due_date"] ??
+          invoice["paymentDueDate"] ??
+          invoice["deadline"],
+    );
+
+    if (dueDate == null) return false;
+
+    return DateTime.now().isAfter(endOfDay(dueDate));
+  }
+
+  String getReportPaymentBadge(Map<String, dynamic> report) {
+    final invoice = toMap(report["invoice"]) ?? {};
+
+    if (isOverdueInvoice(invoice)) {
+      return "Pembayaran Overdue";
+    }
+
+    return "Menunggu Verifikasi";
+  }
+
+  Map<String, dynamic>? getPendingPaymentFromInvoice(
+    Map<String, dynamic> invoice,
+  ) {
+    final List<dynamic> candidates = [];
+
+    void addIfExists(dynamic value) {
+      if (value == null) return;
+
+      if (value is List) {
+        candidates.addAll(value);
+      } else {
+        candidates.add(value);
+      }
+    }
+
+    addIfExists(invoice["payments"]);
+    addIfExists(invoice["rental_payments"]);
+    addIfExists(invoice["rentalPayments"]);
+    addIfExists(invoice["payment"]);
+    addIfExists(invoice["latest_payment"]);
+    addIfExists(invoice["latestPayment"]);
+
+    for (final item in candidates) {
+      final payment = toMap(item);
+
+      if (payment == null) continue;
+
+      if (isPendingPayment(payment)) {
+        return payment;
+      }
+    }
+
+    return null;
   }
 
   Map<String, dynamic>? getPendingPaymentFromBooking(
@@ -537,15 +455,7 @@ class _LaporanSewaState extends State<LaporanSewa> {
         }.toString(),
       );
 
-      final isPending =
-          paymentStatus == "pending" ||
-          paymentStatus == "waiting_confirmation" ||
-          paymentStatus == "waiting" ||
-          paymentStatus == "unverified" ||
-          paymentStatus == "waiting_verification" ||
-          paymentStatus == "menunggu";
-
-      if (isPending) {
+      if (isPendingPayment(payment)) {
         return payment;
       }
     }
@@ -585,6 +495,299 @@ class _LaporanSewaState extends State<LaporanSewa> {
     return getInvoiceFromBooking(booking);
   }
 
+  Future<List<Map<String, dynamic>>> fetchInvoicesForBooking({
+    required int rentalBookingId,
+    required String token,
+  }) async {
+    final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+
+    final urls = [
+      "${ApiService.baseUrl}/rental-bookings/$rentalBookingId/invoices?_=$cacheBuster",
+      "${ApiService.baseUrl}/rental-booking/$rentalBookingId/invoices?_=$cacheBuster",
+      "${ApiService.baseUrl}/invoices/rental-booking/$rentalBookingId?_=$cacheBuster",
+      "${ApiService.baseUrl}/invoices/$rentalBookingId?_=$cacheBuster",
+    ];
+
+    for (final url in urls) {
+      try {
+        final response = await http
+            .get(Uri.parse(url), headers: authHeaders(token))
+            .timeout(const Duration(seconds: 20));
+
+        debugPrint("GET INVOICES FOR LAPORAN URL:");
+        debugPrint(url);
+
+        debugPrint("GET INVOICES FOR LAPORAN STATUS:");
+        debugPrint(response.statusCode.toString());
+
+        debugPrint("GET INVOICES FOR LAPORAN BODY:");
+        debugPrint(response.body);
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final invoices = parseDynamicList(decoded);
+
+          return invoices
+              .where((item) => item is Map)
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .where((invoice) {
+                final id = parseIntValue(invoice["rental_booking_id"]);
+
+                if (id <= 0) return true;
+
+                return id == rentalBookingId;
+              })
+              .toList();
+        }
+
+        if (response.statusCode != 404 && response.statusCode != 405) {
+          return [];
+        }
+      } catch (e) {
+        debugPrint("FETCH INVOICES FOR LAPORAN ERROR:");
+        debugPrint(e.toString());
+      }
+    }
+
+    return [];
+  }
+
+  Future<Map<int, Map<String, dynamic>>> fetchRentalBookingHistoryMap(
+    String token,
+  ) async {
+    final Map<int, Map<String, dynamic>> result = {};
+
+    try {
+      final url = Uri.parse("${ApiService.baseUrl}/rental-bookings/history");
+
+      debugPrint("GET RENTAL BOOKINGS HISTORY URL:");
+      debugPrint(url.toString());
+
+      final response = await http
+          .get(url, headers: authHeaders(token))
+          .timeout(const Duration(seconds: 20));
+
+      debugPrint("GET RENTAL BOOKINGS HISTORY STATUS:");
+      debugPrint(response.statusCode.toString());
+
+      debugPrint("GET RENTAL BOOKINGS HISTORY BODY:");
+      debugPrint(response.body);
+
+      if (response.statusCode != 200) {
+        return result;
+      }
+
+      final decoded = jsonDecode(response.body);
+      final histories = parseDynamicList(decoded);
+
+      for (final item in histories) {
+        final history = toMap(item);
+
+        if (history == null) continue;
+
+        final rentalBookingId = getRentalBookingIdFromData(history);
+
+        if (rentalBookingId > 0) {
+          result[rentalBookingId] = history;
+        }
+      }
+
+      return result;
+    } catch (e) {
+      debugPrint("FETCH RENTAL BOOKING HISTORY ERROR:");
+      debugPrint(e.toString());
+
+      return result;
+    }
+  }
+
+  Future<void> fetchRentalBookings() async {
+    if (!mounted) return;
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final token = await getValidToken();
+
+      if (token == null || token.isEmpty) {
+        showMessage("Token tidak ditemukan, silakan login ulang");
+
+        if (!mounted) return;
+
+        setState(() {
+          reports = [];
+          isLoading = false;
+        });
+
+        return;
+      }
+
+      final historyMap = await fetchRentalBookingHistoryMap(token);
+
+      final url = Uri.parse("${ApiService.baseUrl}/rental-bookings");
+
+      debugPrint("GET RENTAL BOOKINGS FOR LAPORAN SEWA URL:");
+      debugPrint(url.toString());
+
+      final response = await http
+          .get(url, headers: authHeaders(token))
+          .timeout(const Duration(seconds: 20));
+
+      debugPrint("GET RENTAL BOOKINGS FOR LAPORAN SEWA STATUS:");
+      debugPrint(response.statusCode.toString());
+
+      debugPrint("GET RENTAL BOOKINGS FOR LAPORAN SEWA BODY:");
+      debugPrint(response.body);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final bookings = parseDynamicList(decoded);
+
+        final List<Map<String, dynamic>> pendingReports = [];
+        final Set<int> addedPaymentIds = {};
+
+        for (final item in bookings) {
+          final booking = toMap(item);
+
+          if (booking == null) continue;
+
+          final rentalBookingId = getRentalBookingIdFromData(booking);
+          final history = historyMap[rentalBookingId] ?? {};
+
+          if (rentalBookingId > 0) {
+            final invoices = await fetchInvoicesForBooking(
+              rentalBookingId: rentalBookingId,
+              token: token,
+            );
+
+            for (final rawInvoice in invoices) {
+              final invoice = Map<String, dynamic>.from(rawInvoice);
+              final payment = getPendingPaymentFromInvoice(invoice);
+
+              if (payment == null) continue;
+
+              final paymentId = parseIntValue(payment["id"]);
+
+              if (paymentId > 0 && addedPaymentIds.contains(paymentId)) {
+                continue;
+              }
+
+              final invoiceIsOverdue = isOverdueInvoice(invoice);
+
+              debugPrint("CHECK INVOICE PAYMENT REPORT:");
+              debugPrint(
+                {
+                  "rental_booking_id": rentalBookingId,
+                  "invoice_id": invoice["id"],
+                  "invoice_status": invoice["status"],
+                  "due_date": invoice["due_date"],
+                  "remaining_amount": invoice["remaining_amount"],
+                  "is_overdue": invoiceIsOverdue,
+                  "payment_id": payment["id"],
+                  "payment_status": payment["status"],
+                }.toString(),
+              );
+
+              if (invoiceIsOverdue) {
+                pendingReports.add({
+                  "booking": booking,
+                  "payment": payment,
+                  "invoice": invoice,
+                  "history": history,
+                });
+
+                if (paymentId > 0) {
+                  addedPaymentIds.add(paymentId);
+                }
+              }
+            }
+          }
+
+          final payment = getPendingPaymentFromBooking(booking);
+
+          if (payment == null) continue;
+
+          final paymentId = parseIntValue(payment["id"]);
+
+          if (paymentId > 0 && addedPaymentIds.contains(paymentId)) {
+            continue;
+          }
+
+          final invoice = getInvoiceFromBookingOrPayment(
+            booking: booking,
+            payment: payment,
+          );
+
+          pendingReports.add({
+            "booking": booking,
+            "payment": payment,
+            "invoice": invoice,
+            "history": history,
+          });
+
+          if (paymentId > 0) {
+            addedPaymentIds.add(paymentId);
+          }
+        }
+
+        if (!mounted) return;
+
+        setState(() {
+          rentalHistoryById = historyMap;
+          reports = pendingReports;
+        });
+      } else {
+        showMessage(
+          parseResponseMessage(response.body, "Gagal mengambil pengajuan sewa"),
+        );
+
+        if (!mounted) return;
+
+        setState(() {
+          reports = [];
+        });
+      }
+    } catch (e) {
+      debugPrint("FETCH RENTAL BOOKINGS ERROR:");
+      debugPrint(e.toString());
+
+      showMessage("Terjadi kesalahan saat mengambil pengajuan sewa");
+
+      if (!mounted) return;
+
+      setState(() {
+        reports = [];
+      });
+    } finally {
+      if (!mounted) return;
+
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Map<String, dynamic> getPropertyFromHistory(Map<String, dynamic> history) {
+    final rentalBooking =
+        toMap(history["rental_booking"]) ??
+        toMap(history["rentalBooking"]) ??
+        toMap(history["booking"]);
+
+    return toMap(history["place_property"]) ??
+        toMap(history["placeProperty"]) ??
+        toMap(history["property"]) ??
+        toMap(history["kos"]) ??
+        toMap(history["kost"]) ??
+        toMap(rentalBooking?["place_property"]) ??
+        toMap(rentalBooking?["placeProperty"]) ??
+        toMap(rentalBooking?["property"]) ??
+        toMap(rentalBooking?["kos"]) ??
+        toMap(rentalBooking?["kost"]) ??
+        {};
+  }
+
   Map<String, dynamic> getProperty(Map<String, dynamic> booking) {
     final nestedBooking =
         toMap(booking["rental_booking"]) ??
@@ -618,65 +821,28 @@ class _LaporanSewaState extends State<LaporanSewa> {
     final property = getProperty(booking);
     final historyProperty = getPropertyFromHistory(history);
 
-    final rentalBooking =
-        toMap(booking["rental_booking"]) ??
-        toMap(booking["rentalBooking"]) ??
-        toMap(booking["booking"]);
-
-    final historyRentalBooking =
-        toMap(history["rental_booking"]) ??
-        toMap(history["rentalBooking"]) ??
-        toMap(history["booking"]);
-
-    final rentalBookingProperty =
-        toMap(rentalBooking?["place_property"]) ??
-        toMap(rentalBooking?["placeProperty"]) ??
-        toMap(rentalBooking?["property"]) ??
-        toMap(rentalBooking?["kos"]) ??
-        toMap(rentalBooking?["kost"]) ??
-        {};
-
-    final historyRentalBookingProperty =
-        toMap(historyRentalBooking?["place_property"]) ??
-        toMap(historyRentalBooking?["placeProperty"]) ??
-        toMap(historyRentalBooking?["property"]) ??
-        toMap(historyRentalBooking?["kos"]) ??
-        toMap(historyRentalBooking?["kost"]) ??
-        {};
-
     final candidates = [
       property["title"],
       property["property_name"],
       property["nama_kos"],
+      property["nama_kost"],
       property["name"],
       property["nama"],
-
-      rentalBookingProperty["title"],
-      rentalBookingProperty["property_name"],
-      rentalBookingProperty["nama_kos"],
-      rentalBookingProperty["name"],
-      rentalBookingProperty["nama"],
-
       historyProperty["title"],
       historyProperty["property_name"],
       historyProperty["nama_kos"],
+      historyProperty["nama_kost"],
       historyProperty["name"],
       historyProperty["nama"],
-
-      historyRentalBookingProperty["title"],
-      historyRentalBookingProperty["property_name"],
-      historyRentalBookingProperty["nama_kos"],
-      historyRentalBookingProperty["name"],
-      historyRentalBookingProperty["nama"],
-
       booking["place_property_name"],
       booking["property_name"],
       booking["nama_kos"],
+      booking["nama_kost"],
       booking["kos_name"],
-
       history["place_property_name"],
       history["property_name"],
       history["nama_kos"],
+      history["nama_kost"],
       history["kos_name"],
     ];
 
@@ -684,14 +850,9 @@ class _LaporanSewaState extends State<LaporanSewa> {
       final text = item?.toString().trim() ?? "";
 
       if (text.isNotEmpty && text != "null") {
-        debugPrint("FINAL NAMA KOS:");
-        debugPrint(text);
         return text;
       }
     }
-
-    debugPrint("FINAL NAMA KOS:");
-    debugPrint("Nama kos tidak tersedia");
 
     return "Nama kos tidak tersedia";
   }
@@ -704,10 +865,6 @@ class _LaporanSewaState extends State<LaporanSewa> {
     final historyProperty = getPropertyFromHistory(history);
     final city = toMap(property["city"]);
     final historyCity = toMap(historyProperty["city"]);
-    final historyRentalBooking =
-        toMap(history["rental_booking"]) ??
-        toMap(history["rentalBooking"]) ??
-        toMap(history["booking"]);
 
     return safeText(
       property["address"] ??
@@ -719,9 +876,7 @@ class _LaporanSewaState extends State<LaporanSewa> {
           historyProperty["alamat"] ??
           historyCity?["name"] ??
           history["address"] ??
-          history["alamat"] ??
-          historyRentalBooking?["address"] ??
-          historyRentalBooking?["alamat"],
+          history["alamat"],
       fallback: "Alamat belum tersedia",
     );
   }
@@ -922,35 +1077,62 @@ class _LaporanSewaState extends State<LaporanSewa> {
         return;
       }
 
-      final url = Uri.parse(
+      final urls = [
         "${ApiService.baseUrl}/rental-payments/$paymentId/approve",
-      );
+        "${ApiService.baseUrl}/invoice-payments/$paymentId/approve",
+        "${ApiService.baseUrl}/invoices/payments/$paymentId/approve",
+        "${ApiService.baseUrl}/invoice-payment/$paymentId/approve",
+      ];
 
-      debugPrint("APPROVE PAYMENT URL:");
-      debugPrint(url.toString());
+      http.Response? lastResponse;
 
-      final response = await http
-          .post(
-            url,
-            headers: authHeaders(token),
-            body: jsonEncode({"verified_amount": amount, "status": "approved"}),
-          )
-          .timeout(const Duration(seconds: 20));
+      for (final rawUrl in urls) {
+        final url = Uri.parse(rawUrl);
 
-      debugPrint("APPROVE PAYMENT STATUS:");
-      debugPrint(response.statusCode.toString());
+        debugPrint("APPROVE PAYMENT URL:");
+        debugPrint(url.toString());
 
-      debugPrint("APPROVE PAYMENT BODY:");
-      debugPrint(response.body);
+        final response = await http
+            .post(
+              url,
+              headers: authHeaders(token),
+              body: jsonEncode({
+                "verified_amount": amount,
+                "status": "approved",
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        showMessage("Pembayaran berhasil di-accept", success: true);
-        await fetchRentalBookings();
-      } else {
+        lastResponse = response;
+
+        debugPrint("APPROVE PAYMENT STATUS:");
+        debugPrint(response.statusCode.toString());
+
+        debugPrint("APPROVE PAYMENT BODY:");
+        debugPrint(response.body);
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          showMessage("Pembayaran berhasil di-accept", success: true);
+          await fetchRentalBookings();
+          return;
+        }
+
+        if (response.statusCode == 404 || response.statusCode == 405) {
+          continue;
+        }
+
         showMessage(
           parseResponseMessage(response.body, "Gagal accept pembayaran"),
         );
+        return;
       }
+
+      showMessage(
+        parseResponseMessage(
+          lastResponse?.body ?? "",
+          "Route approve payment belum cocok.",
+        ),
+      );
     } catch (e) {
       debugPrint("APPROVE PAYMENT ERROR:");
       debugPrint(e.toString());
@@ -982,35 +1164,59 @@ class _LaporanSewaState extends State<LaporanSewa> {
         return;
       }
 
-      final url = Uri.parse(
+      final urls = [
         "${ApiService.baseUrl}/rental-payments/$paymentId/reject",
-      );
+        "${ApiService.baseUrl}/invoice-payments/$paymentId/reject",
+        "${ApiService.baseUrl}/invoices/payments/$paymentId/reject",
+        "${ApiService.baseUrl}/invoice-payment/$paymentId/reject",
+      ];
 
-      debugPrint("REJECT PAYMENT URL:");
-      debugPrint(url.toString());
+      http.Response? lastResponse;
 
-      final response = await http
-          .post(
-            url,
-            headers: authHeaders(token),
-            body: jsonEncode({"status": "rejected"}),
-          )
-          .timeout(const Duration(seconds: 20));
+      for (final rawUrl in urls) {
+        final url = Uri.parse(rawUrl);
 
-      debugPrint("REJECT PAYMENT STATUS:");
-      debugPrint(response.statusCode.toString());
+        debugPrint("REJECT PAYMENT URL:");
+        debugPrint(url.toString());
 
-      debugPrint("REJECT PAYMENT BODY:");
-      debugPrint(response.body);
+        final response = await http
+            .post(
+              url,
+              headers: authHeaders(token),
+              body: jsonEncode({"status": "rejected"}),
+            )
+            .timeout(const Duration(seconds: 20));
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        showMessage("Pembayaran berhasil di-reject", success: true);
-        await fetchRentalBookings();
-      } else {
+        lastResponse = response;
+
+        debugPrint("REJECT PAYMENT STATUS:");
+        debugPrint(response.statusCode.toString());
+
+        debugPrint("REJECT PAYMENT BODY:");
+        debugPrint(response.body);
+
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          showMessage("Pembayaran berhasil di-reject", success: true);
+          await fetchRentalBookings();
+          return;
+        }
+
+        if (response.statusCode == 404 || response.statusCode == 405) {
+          continue;
+        }
+
         showMessage(
           parseResponseMessage(response.body, "Gagal reject pembayaran"),
         );
+        return;
       }
+
+      showMessage(
+        parseResponseMessage(
+          lastResponse?.body ?? "",
+          "Route reject payment belum cocok.",
+        ),
+      );
     } catch (e) {
       debugPrint("REJECT PAYMENT ERROR:");
       debugPrint(e.toString());
@@ -1028,22 +1234,22 @@ class _LaporanSewaState extends State<LaporanSewa> {
   void showApproveDialog(Map<String, dynamic> report) {
     final payment = toMap(report["payment"]) ?? {};
     final paymentId = parseIntValue(payment["id"]);
-
+  
     if (paymentId <= 0) {
-      showMessage("ID pembayaran tidak ditemukan dari data /rental-bookings");
+      showMessage("ID pembayaran tidak ditemukan dari data invoice");
       return;
     }
-
+  
     final claimedAmount = payment["claimed_amount"] ?? payment["amount"] ?? "0";
-
+  
     final controller = TextEditingController(
-      text: formatRupiah(claimedAmount).replaceAll(".", ""),
+      text: formatRupiah(claimedAmount),
     );
-
+  
     showDialog(
       context: context,
       barrierDismissible: !isActionLoading,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
@@ -1055,9 +1261,13 @@ class _LaporanSewaState extends State<LaporanSewa> {
           content: TextField(
             controller: controller,
             keyboardType: TextInputType.number,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              ThousandsSeparatorInputFormatter(),
+            ],
             decoration: InputDecoration(
               labelText: "Nominal diterima",
-              hintText: "Contoh: 1000000",
+              hintText: "Contoh: 10.000",
               prefixText: "Rp ",
               filled: true,
               fillColor: const Color(0xFFF4F6FA),
@@ -1072,7 +1282,7 @@ class _LaporanSewaState extends State<LaporanSewa> {
               onPressed: isActionLoading
                   ? null
                   : () {
-                      Navigator.pop(context);
+                      Navigator.pop(dialogContext);
                     },
               child: const Text("Batal"),
             ),
@@ -1080,11 +1290,13 @@ class _LaporanSewaState extends State<LaporanSewa> {
               onPressed: isActionLoading
                   ? null
                   : () async {
-                      Navigator.pop(context);
-
+                      final amountText = controller.text;
+  
+                      Navigator.pop(dialogContext);
+  
                       await approvePayment(
                         paymentId: paymentId,
-                        verifiedAmount: controller.text,
+                        verifiedAmount: amountText,
                       );
                     },
               style: ElevatedButton.styleFrom(
@@ -1107,14 +1319,14 @@ class _LaporanSewaState extends State<LaporanSewa> {
     final paymentId = parseIntValue(payment["id"]);
 
     if (paymentId <= 0) {
-      showMessage("ID pembayaran tidak ditemukan dari data /rental-bookings");
+      showMessage("ID pembayaran tidak ditemukan dari data invoice");
       return;
     }
 
     showDialog(
       context: context,
       barrierDismissible: !isActionLoading,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
@@ -1131,7 +1343,7 @@ class _LaporanSewaState extends State<LaporanSewa> {
               onPressed: isActionLoading
                   ? null
                   : () {
-                      Navigator.pop(context);
+                      Navigator.pop(dialogContext);
                     },
               child: const Text("Batal"),
             ),
@@ -1139,7 +1351,7 @@ class _LaporanSewaState extends State<LaporanSewa> {
               onPressed: isActionLoading
                   ? null
                   : () async {
-                      Navigator.pop(context);
+                      Navigator.pop(dialogContext);
                       await rejectPayment(paymentId);
                     },
               style: ElevatedButton.styleFrom(
@@ -1168,7 +1380,7 @@ class _LaporanSewaState extends State<LaporanSewa> {
 
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return Dialog.fullscreen(
           backgroundColor: Colors.black,
           child: SafeArea(
@@ -1203,7 +1415,7 @@ class _LaporanSewaState extends State<LaporanSewa> {
                     backgroundColor: Colors.white.withOpacity(0.2),
                     child: IconButton(
                       onPressed: () {
-                        Navigator.pop(context);
+                        Navigator.pop(dialogContext);
                       },
                       icon: const Icon(Icons.close, color: Colors.white),
                     ),
@@ -1220,12 +1432,43 @@ class _LaporanSewaState extends State<LaporanSewa> {
   void showMessage(String message, {bool success = false}) {
     if (!mounted) return;
 
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: success ? Colors.green : Colors.red,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
+  Widget extendShortButton({
+    required bool isExpanded,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: AnimatedRotation(
+          turns: isExpanded ? 0.5 : 0,
+          duration: const Duration(milliseconds: 220),
+          child: Icon(Icons.keyboard_arrow_down_rounded, color: primaryColor),
+        ),
+        label: Text(
+          isExpanded ? "Short" : "Extend",
+          style: TextStyle(color: primaryColor, fontWeight: FontWeight.w900),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: primaryColor.withOpacity(0.35)),
+          backgroundColor: const Color(0xFFF4F6FA),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(17),
+          ),
+        ),
       ),
     );
   }
@@ -1316,59 +1559,6 @@ class _LaporanSewaState extends State<LaporanSewa> {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget sectionCard({
-    required String title,
-    required IconData icon,
-    required List<Widget> children,
-  }) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 18),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: softGreen,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, color: primaryColor, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          ...children,
         ],
       ),
     );
@@ -1646,6 +1836,10 @@ class _LaporanSewaState extends State<LaporanSewa> {
         payment["amount"] ??
         claimedAmount;
 
+    final invoiceStatus = isOverdueInvoice(invoice)
+        ? "Overdue"
+        : safeText(invoice["status"], fallback: "-");
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 18),
@@ -1720,9 +1914,9 @@ class _LaporanSewaState extends State<LaporanSewa> {
                           color: Colors.white.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: const Text(
-                          "Menunggu Verifikasi",
-                          style: TextStyle(
+                        child: Text(
+                          getReportPaymentBadge(report),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
@@ -1759,7 +1953,6 @@ class _LaporanSewaState extends State<LaporanSewa> {
               ],
             ),
           ),
-
           AnimatedSize(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeInOut,
@@ -1778,6 +1971,11 @@ class _LaporanSewaState extends State<LaporanSewa> {
                     icon: Icons.receipt_long_outlined,
                     title: "Payment ID",
                     value: paymentId,
+                  ),
+                  summaryItem(
+                    icon: Icons.warning_amber_rounded,
+                    title: "Status Invoice",
+                    value: invoiceStatus,
                   ),
                   totalBox(
                     title: "Nominal Dikirim Penyewa",
@@ -1807,6 +2005,22 @@ class _LaporanSewaState extends State<LaporanSewa> {
                     value: paymentId,
                   ),
                   summaryItem(
+                    icon: Icons.date_range_rounded,
+                    title: "Periode Invoice",
+                    value:
+                        "${formatDate(invoice["period_start"])} - ${formatDate(invoice["period_end"])}",
+                  ),
+                  summaryItem(
+                    icon: Icons.event_busy_rounded,
+                    title: "Jatuh Tempo",
+                    value: formatDate(invoice["due_date"]),
+                  ),
+                  summaryItem(
+                    icon: Icons.warning_amber_rounded,
+                    title: "Status Invoice",
+                    value: invoiceStatus,
+                  ),
+                  summaryItem(
                     icon: Icons.account_circle_outlined,
                     title: "Nama Pengirim",
                     value: senderName,
@@ -1817,27 +2031,15 @@ class _LaporanSewaState extends State<LaporanSewa> {
                     value: paymentNotes,
                   ),
                   summaryItem(
-                    icon: Icons.calendar_today_rounded,
-                    title: "Tanggal Mulai",
-                    value: formatDate(
-                      booking["start_date"] ??
-                          booking["check_in"] ??
-                          booking["created_at"],
-                    ),
-                  ),
-                  summaryItem(
-                    icon: Icons.event_available_rounded,
-                    title: "Tanggal Selesai",
-                    value: formatDate(
-                      booking["end_date"] ??
-                          booking["check_out"] ??
-                          invoice["period_end"],
-                    ),
-                  ),
-                  summaryItem(
                     icon: Icons.receipt_outlined,
                     title: "Total Invoice",
                     value: "Rp ${formatRupiah(totalAmount)}",
+                  ),
+                  summaryItem(
+                    icon: Icons.payments_rounded,
+                    title: "Sisa Invoice",
+                    value:
+                        "Rp ${formatRupiah(getInvoiceRemainingAmount(invoice))}",
                   ),
                   totalBox(
                     title: "Nominal Dikirim Penyewa",
@@ -1976,6 +2178,42 @@ class _LaporanSewaState extends State<LaporanSewa> {
             ),
         ],
       ),
+    );
+  }
+}
+class ThousandsSeparatorInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final rawText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (rawText.isEmpty) {
+      return const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+    }
+
+    final buffer = StringBuffer();
+    int count = 0;
+
+    for (int i = rawText.length - 1; i >= 0; i--) {
+      buffer.write(rawText[i]);
+      count++;
+
+      if (count == 3 && i != 0) {
+        buffer.write('.');
+        count = 0;
+      }
+    }
+
+    final formatted = buffer.toString().split('').reversed.join();
+
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

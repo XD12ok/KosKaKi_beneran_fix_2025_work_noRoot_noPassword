@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:koskaki/screens/Owner/AcceptKost.dart';
 import 'package:koskaki/screens/Owner/LaporanUang.dart';
 import 'package:koskaki/service/api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,14 +14,73 @@ class LaporanPage extends StatefulWidget {
 }
 
 class _LaporanPageState extends State<LaporanPage> {
-  num totalIncome = 0;
+  final Color primaryColor = const Color(0xFF0A0E50);
+  final Color secondColor = const Color(0xFF123C8C);
+  final Color backgroundColor = const Color(0xFFF4F7FB);
+  final Color darkText = const Color(0xFF111827);
+  final Color greyText = const Color(0xFF6B7280);
+
   bool isLoading = true;
   String? errorMessage;
+
+  DateTime selectedMonth = DateTime.now();
+
+  num totalIncome = 0;
+  num totalOverdueAmount = 0;
+
+  int totalTransactions = 0;
+  int totalApproved = 0;
+  int totalPending = 0;
+  int totalRejected = 0;
+  int totalOverdue = 0;
+
+  List<Map<String, dynamic>> incomeReports = [];
+  List<Map<String, dynamic>> overdueReports = [];
 
   @override
   void initState() {
     super.initState();
     fetchReport();
+  }
+
+  String cleanToken(String? token) {
+    if (token == null) return "";
+
+    String cleaned = token.trim();
+
+    if (cleaned.toLowerCase().startsWith("bearer ")) {
+      cleaned = cleaned.substring(7).trim();
+    }
+
+    cleaned = cleaned.replaceAll('"', '').replaceAll("'", "").trim();
+
+    return cleaned;
+  }
+
+  Future<String> getValidToken() async {
+    final apiToken = cleanToken(await ApiService().getToken());
+
+    if (apiToken.isNotEmpty) return apiToken;
+
+    final prefs = await SharedPreferences.getInstance();
+
+    return cleanToken(
+      prefs.getString('token') ??
+          prefs.getString('access_token') ??
+          prefs.getString('auth_token'),
+    );
+  }
+
+  Map<String, String> authHeaders(String token) {
+    return {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "Authorization": "Bearer $token",
+      "X-Requested-With": "XMLHttpRequest",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
   }
 
   String formatDateForApi(DateTime date) {
@@ -33,16 +91,171 @@ class _LaporanPageState extends State<LaporanPage> {
     return '$year-$month-$day';
   }
 
+  DateTime get startOfMonth {
+    return DateTime(selectedMonth.year, selectedMonth.month, 1);
+  }
+
+  DateTime get endOfMonth {
+    return DateTime(selectedMonth.year, selectedMonth.month + 1, 0);
+  }
+
+  String getMonthName(int month) {
+    const months = [
+      "Januari",
+      "Februari",
+      "Maret",
+      "April",
+      "Mei",
+      "Juni",
+      "Juli",
+      "Agustus",
+      "September",
+      "Oktober",
+      "November",
+      "Desember",
+    ];
+
+    return months[month - 1];
+  }
+
+  String get monthLabel {
+    return "${getMonthName(selectedMonth.month)} ${selectedMonth.year}";
+  }
+
+  void previousMonth() {
+    setState(() {
+      selectedMonth = DateTime(selectedMonth.year, selectedMonth.month - 1, 1);
+    });
+
+    fetchReport();
+  }
+
+  void nextMonth() {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month, 1);
+    final next = DateTime(selectedMonth.year, selectedMonth.month + 1, 1);
+
+    if (next.isAfter(currentMonth)) return;
+
+    setState(() {
+      selectedMonth = next;
+    });
+
+    fetchReport();
+  }
+
+  bool canGoNextMonth() {
+    final now = DateTime.now();
+    final currentMonth = DateTime(now.year, now.month, 1);
+    final next = DateTime(selectedMonth.year, selectedMonth.month + 1, 1);
+
+    return !next.isAfter(currentMonth);
+  }
+
   num parseMoney(dynamic value) {
     if (value == null) return 0;
 
     if (value is num) return value;
 
-    final cleaned = value.toString().replaceAll(RegExp(r'[^0-9.]'), '');
+    String text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return 0;
+
+    text = text.replaceAll("Rp", "").trim();
+
+    if (RegExp(r',\d{1,2}$').hasMatch(text)) {
+      text = text.split(',').first;
+    }
+
+    if (RegExp(r'\.\d{1,2}$').hasMatch(text)) {
+      text = text.split('.').first;
+    }
+
+    final normalNumber = num.tryParse(text);
+
+    if (normalNumber != null) return normalNumber;
+
+    final cleaned = text.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (cleaned.isEmpty) return 0;
 
     return num.tryParse(cleaned) ?? 0;
+  }
+
+  int parseIntValue(dynamic value) {
+    return parseMoney(value).round();
+  }
+
+  Map<String, dynamic>? toMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return null;
+  }
+
+  List<Map<String, dynamic>> parseDynamicList(dynamic value) {
+    dynamic rawData;
+
+    if (value is Map) {
+      rawData = value["data"];
+
+      if (rawData is Map && rawData["data"] != null) {
+        rawData = rawData["data"];
+      }
+
+      rawData ??= value["reports"];
+      rawData ??= value["items"];
+      rawData ??= value["payments"];
+      rawData ??= value["transactions"];
+      rawData ??= value["overdue"];
+      rawData ??= value["overdues"];
+    } else {
+      rawData = value;
+    }
+
+    if (rawData is List) {
+      return rawData
+          .where((item) => item is Map)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+    }
+
+    if (rawData is Map) {
+      return [Map<String, dynamic>.from(rawData)];
+    }
+
+    return [];
+  }
+
+  String parseResponseMessage(String body, String fallback) {
+    try {
+      final decoded = jsonDecode(body);
+
+      if (decoded is Map) {
+        String message = decoded["message"]?.toString() ?? fallback;
+
+        final errors = decoded["errors"];
+
+        if (errors is Map && errors.isNotEmpty) {
+          final firstError = errors.values.first;
+
+          if (firstError is List && firstError.isNotEmpty) {
+            message = firstError.first.toString();
+          } else {
+            message = firstError.toString();
+          }
+        }
+
+        return message;
+      }
+
+      return fallback;
+    } catch (_) {
+      return fallback;
+    }
   }
 
   bool isApprovedStatus(dynamic value) {
@@ -52,31 +265,352 @@ class _LaporanPageState extends State<LaporanPage> {
         status == 'approve' ||
         status == 'paid' ||
         status == 'success' ||
-        status == 'verified';
+        status == 'verified' ||
+        status == 'lunas';
   }
 
-  num calculateTotalFromData(dynamic rawData) {
-    if (rawData is! List) return 0;
+  bool isPendingStatus(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? '';
 
-    num total = 0;
+    return status == 'pending' ||
+        status == 'waiting' ||
+        status == 'waiting_confirmation' ||
+        status == 'waiting_verification' ||
+        status == 'unverified' ||
+        status == 'menunggu';
+  }
 
-    for (final item in rawData) {
-      if (item is! Map) continue;
+  bool isRejectedStatus(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? '';
 
-      if (!isApprovedStatus(item['status'])) continue;
+    return status == 'rejected' ||
+        status == 'reject' ||
+        status == 'failed' ||
+        status == 'ditolak';
+  }
 
-      final amount = parseMoney(
-        item['verified_amount'] ??
-            item['amount'] ??
-            item['claimed_amount'] ??
-            item['total_amount'] ??
-            0,
-      );
+  bool isOverdueStatus(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? '';
 
-      total += amount;
+    return status == 'overdue' ||
+        status == 'terlambat' ||
+        status == 'late';
+  }
+
+  num getReportAmount(Map<String, dynamic> item) {
+    return parseMoney(
+      item["verified_amount"] ??
+          item["amount"] ??
+          item["claimed_amount"] ??
+          item["total_amount"] ??
+          item["total_price"] ??
+          item["remaining_amount"] ??
+          item["price"] ??
+          0,
+    );
+  }
+
+  String getReportStatus(Map<String, dynamic> item) {
+    return item["status"]?.toString().toLowerCase().trim() ??
+        item["payment_status"]?.toString().toLowerCase().trim() ??
+        "";
+  }
+
+  String getPropertyName(Map<String, dynamic> item) {
+    final rentalBooking = toMap(item["rental_booking"]) ??
+        toMap(item["rentalBooking"]) ??
+        toMap(item["booking"]);
+
+    final property = toMap(item["property"]) ??
+        toMap(item["place_property"]) ??
+        toMap(item["placeProperty"]) ??
+        toMap(item["place_properties"]) ??
+        toMap(item["placeProperties"]) ??
+        toMap(rentalBooking?["property"]) ??
+        toMap(rentalBooking?["place_property"]) ??
+        toMap(rentalBooking?["placeProperty"]) ??
+        toMap(rentalBooking?["place_properties"]) ??
+        toMap(rentalBooking?["placeProperties"]);
+
+    final candidates = [
+      item["property_name"],
+      item["place_property_name"],
+      item["nama_kos"],
+      item["nama_kost"],
+      item["kos_name"],
+      item["kost_name"],
+      item["title"],
+      item["name"],
+      rentalBooking?["property_name"],
+      rentalBooking?["place_property_name"],
+      rentalBooking?["nama_kos"],
+      rentalBooking?["nama_kost"],
+      rentalBooking?["title"],
+      rentalBooking?["name"],
+      property?["property_name"],
+      property?["place_property_name"],
+      property?["nama_kos"],
+      property?["nama_kost"],
+      property?["title"],
+      property?["name"],
+    ];
+
+    for (final value in candidates) {
+      final text = value?.toString().trim() ?? "";
+
+      if (text.isNotEmpty && text != "null") {
+        return text;
+      }
     }
 
-    return total;
+    return "Nama kos tidak tersedia";
+  }
+
+  String getResidentName(Map<String, dynamic> item) {
+    final rentalBookingMap = toMap(item["rental_booking"]) ??
+        toMap(item["rentalBooking"]);
+  
+    final bookingMap = toMap(item["booking"]);
+  
+    final user = toMap(item["user"]) ??
+        toMap(item["resident"]) ??
+        toMap(item["tenant"]) ??
+        toMap(rentalBookingMap?["user"]) ??
+        toMap(bookingMap?["user"]);
+  
+    final candidates = [
+      item["sender_name"],
+      item["user_name"],
+      item["resident_name"],
+      item["tenant_name"],
+      item["name"],
+      user?["name"],
+      user?["username"],
+      user?["full_name"],
+    ];
+  
+    for (final value in candidates) {
+      final text = value?.toString().trim() ?? "";
+  
+      if (text.isNotEmpty && text != "null") {
+        return text;
+      }
+    }
+  
+    return "Penyewa";
+  }
+
+  DateTime? parseDate(dynamic value) {
+    if (value == null) return null;
+
+    final text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return null;
+
+    return DateTime.tryParse(text);
+  }
+
+  String formatDate(dynamic value) {
+    final date = parseDate(value);
+
+    if (date == null) return "-";
+
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "Mei",
+      "Jun",
+      "Jul",
+      "Agu",
+      "Sep",
+      "Okt",
+      "Nov",
+      "Des",
+    ];
+
+    return "${date.day} ${months[date.month - 1]} ${date.year}";
+  }
+
+  String getReportDate(Map<String, dynamic> item) {
+    final date =
+        item["verified_at"] ??
+        item["paid_at"] ??
+        item["created_at"] ??
+        item["updated_at"] ??
+        item["payment_date"] ??
+        item["date"];
+
+    return formatDate(date);
+  }
+
+  String formatRupiah(dynamic value) {
+    final number = parseMoney(value).round();
+
+    final result = number.toString().replaceAllMapped(
+          RegExp(r'\B(?=(\d{3})+(?!\d))'),
+          (match) => ".",
+        );
+
+    return "Rp $result";
+  }
+
+  Future<Map<String, dynamic>> fetchIncomeReport(String token) async {
+    final uri = Uri.parse("${ApiService.baseUrl}/reports/income").replace(
+      queryParameters: {
+        "start_date": formatDateForApi(startOfMonth),
+        "end_date": formatDateForApi(endOfMonth),
+      },
+    );
+
+    debugPrint("LAPORAN INCOME URL:");
+    debugPrint(uri.toString());
+
+    final response = await http
+        .get(uri, headers: authHeaders(token))
+        .timeout(const Duration(seconds: 20));
+
+    debugPrint("LAPORAN INCOME STATUS:");
+    debugPrint(response.statusCode.toString());
+
+    debugPrint("LAPORAN INCOME BODY:");
+    debugPrint(response.body);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        parseResponseMessage(response.body, "Gagal mengambil laporan income"),
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is Map<String, dynamic>) return decoded;
+
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+
+    return {
+      "data": decoded,
+    };
+  }
+
+  Future<Map<String, dynamic>> fetchOverdueReport(String token) async {
+    final uri = Uri.parse("${ApiService.baseUrl}/reports/overdue").replace(
+      queryParameters: {
+        "start_date": formatDateForApi(startOfMonth),
+        "end_date": formatDateForApi(endOfMonth),
+      },
+    );
+
+    debugPrint("LAPORAN OVERDUE URL:");
+    debugPrint(uri.toString());
+
+    final response = await http
+        .get(uri, headers: authHeaders(token))
+        .timeout(const Duration(seconds: 20));
+
+    debugPrint("LAPORAN OVERDUE STATUS:");
+    debugPrint(response.statusCode.toString());
+
+    debugPrint("LAPORAN OVERDUE BODY:");
+    debugPrint(response.body);
+
+    if (response.statusCode != 200) {
+      return {
+        "data": [],
+        "total_overdue": 0,
+        "total_overdue_amount": 0,
+      };
+    }
+
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is Map<String, dynamic>) return decoded;
+
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+
+    return {
+      "data": decoded,
+    };
+  }
+
+  void applyIncomeResult(Map<String, dynamic> decoded) {
+    final reports = parseDynamicList(decoded);
+
+    num calculatedApprovedIncome = 0;
+    int approvedCount = 0;
+    int pendingCount = 0;
+    int rejectedCount = 0;
+
+    for (final item in reports) {
+      final status = getReportStatus(item);
+
+      if (isApprovedStatus(status)) {
+        approvedCount++;
+        calculatedApprovedIncome += getReportAmount(item);
+      } else if (isPendingStatus(status)) {
+        pendingCount++;
+      } else if (isRejectedStatus(status)) {
+        rejectedCount++;
+      }
+    }
+
+    final serverTotalIncome = parseMoney(
+      decoded["total_income"] ??
+          decoded["total"] ??
+          decoded["income"] ??
+          decoded["total_amount"],
+    );
+
+    final serverTotalTransactions = parseIntValue(
+      decoded["total_transactions"] ??
+          decoded["transactions"] ??
+          decoded["count"] ??
+          reports.length,
+    );
+
+    totalIncome =
+        serverTotalIncome > 0 ? serverTotalIncome : calculatedApprovedIncome;
+
+    totalTransactions =
+        serverTotalTransactions > 0 ? serverTotalTransactions : reports.length;
+
+    totalApproved = approvedCount;
+    totalPending = pendingCount;
+    totalRejected = rejectedCount;
+    incomeReports = reports;
+  }
+
+  void applyOverdueResult(Map<String, dynamic> decoded) {
+    final reports = parseDynamicList(decoded);
+
+    num calculatedOverdueAmount = 0;
+
+    for (final item in reports) {
+      calculatedOverdueAmount += getReportAmount(item);
+    }
+
+    final serverTotalOverdue = parseIntValue(
+      decoded["total_overdue"] ??
+          decoded["total_overdue_transactions"] ??
+          decoded["total_transactions"] ??
+          decoded["count"] ??
+          reports.length,
+    );
+
+    final serverOverdueAmount = parseMoney(
+      decoded["total_overdue_amount"] ??
+          decoded["total_amount"] ??
+          decoded["remaining_amount"] ??
+          decoded["total"],
+    );
+
+    totalOverdue = serverTotalOverdue > 0 ? serverTotalOverdue : reports.length;
+
+    totalOverdueAmount =
+        serverOverdueAmount > 0 ? serverOverdueAmount : calculatedOverdueAmount;
+
+    overdueReports = reports;
   }
 
   Future<void> fetchReport() async {
@@ -88,18 +622,21 @@ class _LaporanPageState extends State<LaporanPage> {
     });
 
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final token = await getValidToken();
 
-      final token =
-          prefs.getString('token') ??
-          prefs.getString('access_token') ??
-          prefs.getString('auth_token');
-
-      if (token == null || token.isEmpty) {
+      if (token.isEmpty) {
         if (!mounted) return;
 
         setState(() {
           totalIncome = 0;
+          totalOverdueAmount = 0;
+          totalTransactions = 0;
+          totalApproved = 0;
+          totalPending = 0;
+          totalRejected = 0;
+          totalOverdue = 0;
+          incomeReports = [];
+          overdueReports = [];
           isLoading = false;
           errorMessage = "Token login tidak ditemukan. Silakan login ulang.";
         });
@@ -107,148 +644,83 @@ class _LaporanPageState extends State<LaporanPage> {
         return;
       }
 
-      final now = DateTime.now();
-      final startDate = DateTime(now.year, now.month, 1);
-      final endDate = DateTime(now.year, now.month + 1, 0);
+      final incomeResult = await fetchIncomeReport(token);
+      final overdueResult = await fetchOverdueReport(token);
 
-      final uri = Uri.parse("${ApiService.baseUrl}/reports/income").replace(
-        queryParameters: {
-          "start_date": formatDateForApi(startDate),
-          "end_date": formatDateForApi(endDate),
-        },
-      );
+      if (!mounted) return;
 
-      final res = await http.get(
-        uri,
-        headers: {
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "Authorization": "Bearer $token",
-        },
-      );
-
-      debugPrint("LAPORAN PAGE URL: $uri");
-      debugPrint("LAPORAN PAGE STATUS: ${res.statusCode}");
-      debugPrint("LAPORAN PAGE RESPONSE: ${res.body}");
-
-      dynamic decoded;
-
-      try {
-        decoded = jsonDecode(res.body);
-      } catch (_) {
-        decoded = null;
-      }
-
-      if (res.statusCode == 200) {
-        num incomeTotal = 0;
-
-        if (decoded is Map) {
-          final data = decoded['data'];
-
-          final calculatedFromData = calculateTotalFromData(data);
-
-          if (calculatedFromData > 0) {
-            incomeTotal = calculatedFromData;
-          } else {
-            incomeTotal = parseMoney(decoded['total_income']);
-          }
-        }
-
-        if (!mounted) return;
-
-        setState(() {
-          totalIncome = incomeTotal;
-          isLoading = false;
-          errorMessage = null;
-        });
-      } else {
-        final message = decoded is Map
-            ? decoded['message']?.toString() ??
-                  "Gagal mengambil laporan keuangan"
-            : "Gagal mengambil laporan keuangan";
-
-        if (!mounted) return;
-
-        setState(() {
-          totalIncome = 0;
-          isLoading = false;
-          errorMessage = message;
-        });
-      }
+      setState(() {
+        applyIncomeResult(incomeResult);
+        applyOverdueResult(overdueResult);
+        isLoading = false;
+        errorMessage = null;
+      });
     } catch (e) {
-      debugPrint("LAPORAN PAGE ERROR: $e");
+      debugPrint("LAPORAN PAGE ERROR:");
+      debugPrint(e.toString());
 
       if (!mounted) return;
 
       setState(() {
         totalIncome = 0;
+        totalOverdueAmount = 0;
+        totalTransactions = 0;
+        totalApproved = 0;
+        totalPending = 0;
+        totalRejected = 0;
+        totalOverdue = 0;
+        incomeReports = [];
+        overdueReports = [];
         isLoading = false;
-        errorMessage = "Terjadi kesalahan koneksi: $e";
+        errorMessage = e.toString().replaceFirst("Exception: ", "");
       });
     }
   }
 
-  String formatRupiah(dynamic value) {
-    final number = double.tryParse(value.toString()) ?? 0;
-    final intNumber = number.round();
+  Color getStatusColor(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? "";
 
-    final result = intNumber.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (match) => '${match[1]}.',
-    );
+    if (isApprovedStatus(status)) return const Color(0xFF16A34A);
+    if (isPendingStatus(status)) return const Color(0xFFF59E0B);
+    if (isRejectedStatus(status)) return const Color(0xFFEF4444);
+    if (isOverdueStatus(status)) return const Color(0xFFDC2626);
 
-    return "Rp $result";
+    return primaryColor;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: fetchReport,
-          color: const Color(0xFF0A0E50),
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildHeader(),
-                const SizedBox(height: 20),
-                _buildTotalIncomeCard(),
-                const SizedBox(height: 18),
-                _buildQuickMenu(),
-                const SizedBox(height: 20),
-                _buildPaymentReminderCard(),
-                const SizedBox(height: 20),
-                _buildRequestCard(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  String getStatusText(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? "";
+
+    if (isApprovedStatus(status)) return "Approved";
+    if (isPendingStatus(status)) return "Pending";
+    if (isRejectedStatus(status)) return "Rejected";
+    if (isOverdueStatus(status)) return "Overdue";
+
+    if (status.isEmpty) return "Status";
+    return status.replaceAll("_", " ").toUpperCase();
   }
 
-  Widget _buildHeader() {
+  Widget buildHeader() {
     return Row(
       children: [
         Container(
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: const Color(0xFF0A0E50),
+            color: primaryColor,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF0A0E50).withOpacity(0.25),
+                color: primaryColor.withOpacity(0.25),
                 blurRadius: 12,
                 offset: const Offset(0, 6),
               ),
             ],
           ),
-          child: const Icon(Icons.analytics_rounded, color: Colors.white),
+          child: const Icon(
+            Icons.analytics_rounded,
+            color: Colors.white,
+          ),
         ),
         const SizedBox(width: 12),
         const Expanded(
@@ -265,7 +737,7 @@ class _LaporanPageState extends State<LaporanPage> {
               ),
               SizedBox(height: 3),
               Text(
-                "Pantau uang masuk dan aktivitas kost",
+                "Data pemasukan dan tunggakan kost",
                 style: TextStyle(
                   fontSize: 13,
                   color: Color(0xFF6B7280),
@@ -276,15 +748,64 @@ class _LaporanPageState extends State<LaporanPage> {
           ),
         ),
         IconButton(
-          onPressed: fetchReport,
+          onPressed: isLoading ? null : fetchReport,
           icon: const Icon(Icons.refresh_rounded),
-          color: const Color(0xFF0A0E50),
+          color: primaryColor,
         ),
       ],
     );
   }
 
-  Widget _buildTotalIncomeCard() {
+  Widget buildMonthSelector() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: isLoading ? null : previousMonth,
+            icon: const Icon(Icons.chevron_left_rounded),
+            color: primaryColor,
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  monthLabel,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  "${formatDate(startOfMonth)} - ${formatDate(endOfMonth)}",
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: isLoading || !canGoNextMonth() ? null : nextMonth,
+            icon: const Icon(Icons.chevron_right_rounded),
+            color: primaryColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildTotalIncomeCard() {
     return InkWell(
       borderRadius: BorderRadius.circular(28),
       onTap: () {
@@ -300,14 +821,14 @@ class _LaporanPageState extends State<LaporanPage> {
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0A0E50), Color(0xFF123C8C)],
+          gradient: LinearGradient(
+            colors: [primaryColor, secondColor],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF0A0E50).withOpacity(0.28),
+              color: primaryColor.withOpacity(0.28),
               blurRadius: 22,
               offset: const Offset(0, 12),
             ),
@@ -389,7 +910,7 @@ class _LaporanPageState extends State<LaporanPage> {
                 ),
                 const SizedBox(height: 22),
                 Text(
-                  "Total Uang Masuk Bulan Ini",
+                  "Total Uang Masuk",
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.78),
                     fontSize: 14,
@@ -447,7 +968,7 @@ class _LaporanPageState extends State<LaporanPage> {
                   ),
                 const SizedBox(height: 12),
                 Text(
-                  "Otomatis reset setiap awal bulan",
+                  "Periode $monthLabel",
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.68),
                     fontSize: 12,
@@ -462,33 +983,64 @@ class _LaporanPageState extends State<LaporanPage> {
     );
   }
 
-  Widget _buildQuickMenu() {
-    return Row(
+  Widget buildStatGrid() {
+    return Column(
       children: [
-        Expanded(
-          child: _buildMiniCard(
-            icon: Icons.trending_up_rounded,
-            title: "Pemasukan",
-            subtitle: "Approved",
-            color: const Color(0xFF16A34A),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: buildStatCard(
+                icon: Icons.receipt_long_rounded,
+                title: "Transaksi",
+                value: totalTransactions.toString(),
+                subtitle: "Semua data",
+                color: primaryColor,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: buildStatCard(
+                icon: Icons.verified_rounded,
+                title: "Approved",
+                value: totalApproved.toString(),
+                subtitle: "Sudah diterima",
+                color: const Color(0xFF16A34A),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _buildMiniCard(
-            icon: Icons.receipt_long_rounded,
-            title: "Tagihan",
-            subtitle: "Monitoring",
-            color: const Color(0xFFF59E0B),
-          ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: buildStatCard(
+                icon: Icons.hourglass_top_rounded,
+                title: "Pending",
+                value: totalPending.toString(),
+                subtitle: "Menunggu",
+                color: const Color(0xFFF59E0B),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: buildStatCard(
+                icon: Icons.warning_amber_rounded,
+                title: "Overdue",
+                value: totalOverdue.toString(),
+                subtitle: formatRupiah(totalOverdueAmount),
+                color: const Color(0xFFDC2626),
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildMiniCard({
+  Widget buildStatCard({
     required IconData icon,
     required String title,
+    required String value,
     required String subtitle,
     required Color color,
   }) {
@@ -527,7 +1079,17 @@ class _LaporanPageState extends State<LaporanPage> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFF111827),
-                    fontSize: 14,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 18,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -537,7 +1099,7 @@ class _LaporanPageState extends State<LaporanPage> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFF6B7280),
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -549,9 +1111,57 @@ class _LaporanPageState extends State<LaporanPage> {
     );
   }
 
-  Widget _buildPaymentReminderCard() {
+  Widget buildSectionTitle({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    return Row(
+      children: [
+        Container(
+          height: 40,
+          width: 40,
+          decoration: BoxDecoration(
+            color: primaryColor.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: primaryColor, size: 21),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: darkText,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: greyText,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildIncomeList() {
+    final visibleReports = incomeReports.take(8).toList();
+
     return Container(
       width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(26),
@@ -564,143 +1174,353 @@ class _LaporanPageState extends State<LaporanPage> {
           ),
         ],
       ),
-      padding: const EdgeInsets.all(16),
       child: Column(
+        children: [
+          buildSectionTitle(
+            title: "Riwayat Pemasukan",
+            subtitle: "Data pembayaran dari API",
+            icon: Icons.payments_rounded,
+          ),
+          const SizedBox(height: 14),
+          if (isLoading)
+            buildMiniLoading()
+          else if (incomeReports.isEmpty)
+            buildEmptyMiniState(
+              icon: Icons.receipt_long_outlined,
+              title: "Belum ada pemasukan",
+              subtitle: "Data pemasukan untuk periode ini masih kosong.",
+            )
+          else
+            Column(
+              children: visibleReports.map((item) {
+                return buildIncomeItem(item);
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildIncomeItem(Map<String, dynamic> item) {
+    final status = getReportStatus(item);
+    final statusColor = getStatusColor(status);
+    final amount = getReportAmount(item);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  "Pengingat Pembayaran",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+          Container(
+            height: 43,
+            width: 43,
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(
+              isApprovedStatus(status)
+                  ? Icons.check_circle_rounded
+                  : isPendingStatus(status)
+                      ? Icons.hourglass_top_rounded
+                      : isRejectedStatus(status)
+                          ? Icons.cancel_rounded
+                          : Icons.receipt_long_rounded,
+              color: statusColor,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  getPropertyName(item),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
                     color: Color(0xFF111827),
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFEDD5),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: const Text(
-                  "Belum Bayar",
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFFEA580C),
+                    fontSize: 13,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: Image.network(
-                  "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2",
-                  width: 82,
-                  height: 82,
-                  fit: BoxFit.cover,
+                const SizedBox(height: 3),
+                Text(
+                  getResidentName(item),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 13),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Kost Premium Nugraha",
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 15,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Text(
-                      "Kamar 05",
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: 5),
-                    Text(
-                      "5 Mar - 25 Mar 2025",
-                      style: TextStyle(
-                        color: Color(0xFFEF4444),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 5),
+                Text(
+                  getReportDate(item),
+                  style: const TextStyle(
+                    color: Color(0xFF9CA3AF),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            "Rp 1.000.000",
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFFEA580C),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(99),
-            child: LinearProgressIndicator(
-              value: 0.5,
-              minHeight: 8,
-              backgroundColor: const Color(0xFFE5E7EB),
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                Color(0xFFEF4444),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Row(
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Icon(Icons.schedule_rounded, size: 15, color: Color(0xFF6B7280)),
-              SizedBox(width: 5),
               Text(
-                "Jatuh Tempo 25 Maret",
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF6B7280),
-                  fontWeight: FontWeight.w600,
+                formatRupiah(amount),
+                style: const TextStyle(
+                  color: Color(0xFF111827),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
+              const SizedBox(height: 6),
+              buildStatusBadge(status),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildOverdueList() {
+    final visibleReports = overdueReports.take(6).toList();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.045),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          buildSectionTitle(
+            title: "Laporan Overdue",
+            subtitle: "Tagihan yang sudah lewat jatuh tempo",
+            icon: Icons.warning_amber_rounded,
+          ),
           const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 46,
-            child: ElevatedButton.icon(
-              onPressed: () {},
-              icon: const Icon(Icons.notifications_active_rounded, size: 18),
-              label: const Text("Ingatkan Penyewa"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0A0E50),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          if (isLoading)
+            buildMiniLoading()
+          else if (overdueReports.isEmpty)
+            buildEmptyMiniState(
+              icon: Icons.check_circle_outline_rounded,
+              title: "Tidak ada overdue",
+              subtitle: "Belum ada tagihan terlambat pada periode ini.",
+            )
+          else
+            Column(
+              children: visibleReports.map((item) {
+                return buildOverdueItem(item);
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildOverdueItem(Map<String, dynamic> item) {
+    final amount = getReportAmount(item);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            height: 43,
+            width: 43,
+            decoration: BoxDecoration(
+              color: const Color(0xFFDC2626).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: Color(0xFFDC2626),
+              size: 23,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  getPropertyName(item),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-                textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                const SizedBox(height: 3),
+                Text(
+                  getResidentName(item),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  "Jatuh tempo: ${formatDate(item["due_date"] ?? item["dueDate"] ?? item["period_end"] ?? item["periodEnd"])}",
+                  style: const TextStyle(
+                    color: Color(0xFFDC2626),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            formatRupiah(amount),
+            style: const TextStyle(
+              color: Color(0xFFDC2626),
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildStatusBadge(dynamic status) {
+    final color = getStatusColor(status);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        getStatusText(status),
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+  Widget buildMiniLoading() {
+    return Column(
+      children: List.generate(3, (index) {
+        return Container(
+          height: 66,
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(18),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget buildEmptyMiniState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: greyText, size: 34),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: darkText,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: greyText,
+              fontSize: 12,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildErrorCard() {
+    if (errorMessage == null) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFECACA)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            color: Color(0xFFDC2626),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              errorMessage!,
+              style: const TextStyle(
+                color: Color(0xFF991B1B),
+                fontSize: 12,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -709,179 +1529,43 @@ class _LaporanPageState extends State<LaporanPage> {
     );
   }
 
-  Widget _buildRequestCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.045),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+  Widget buildContent() {
+    return RefreshIndicator(
+      onRefresh: fetchReport,
+      color: primaryColor,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: const Color(0xFF0A0E50).withOpacity(0.10),
-                  child: const Text(
-                    "R",
-                    style: TextStyle(
-                      color: Color(0xFF0A0E50),
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Text(
-                    "RACHELL KIM",
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF111827),
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0A0E50).withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: const Text(
-                    "Kunjungi Profil",
-                    style: TextStyle(
-                      color: Color(0xFF0A0E50),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                "Ingin mengajukan sewa",
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 15,
-                  color: Color(0xFF111827),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
-                  child: Image.network(
-                    "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2",
-                    width: 82,
-                    height: 82,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Kost Arsa IT",
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF111827),
-                        ),
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        "Jl. Sampangan, Semarang Selatan",
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF6B7280),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        "Rp 1.000.000",
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF111827),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            buildHeader(),
+            const SizedBox(height: 18),
+            buildMonthSelector(),
+            const SizedBox(height: 18),
+            buildTotalIncomeCard(),
+            if (errorMessage != null) ...[
+              const SizedBox(height: 14),
+              buildErrorCard(),
+            ],
+            const SizedBox(height: 18),
+            buildStatGrid(),
             const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF0A0E50),
-                      side: const BorderSide(color: Color(0xFF0A0E50)),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text(
-                      "Tolak",
-                      style: TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const AcceptKost()),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0A0E50),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text(
-                      "Terima",
-                      style: TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            buildIncomeList(),
+            const SizedBox(height: 20),
+            buildOverdueList(),
           ],
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      body: SafeArea(
+        child: buildContent(),
       ),
     );
   }

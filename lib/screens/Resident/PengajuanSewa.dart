@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Resident/Payment.dart';
 import 'package:koskaki/service/api_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PengajuanSewa extends StatefulWidget {
   final Map<String, dynamic>? kos;
@@ -73,12 +74,67 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     return null;
   }
 
+  String safeString(dynamic value) {
+    final text = value?.toString().trim() ?? "";
+
+    if (text.isEmpty) return "";
+    if (text == "null") return "";
+    if (text.startsWith("{")) return "";
+    if (text.startsWith("[")) return "";
+
+    return text;
+  }
+
+  String pickSafeTextFromMap(Map<String, dynamic>? source, List<String> keys) {
+    if (source == null) return "";
+
+    for (final key in keys) {
+      final text = safeString(source[key]);
+
+      if (text.isNotEmpty) {
+        return text;
+      }
+    }
+
+    return "";
+  }
+
+  int parseIntValue(dynamic value) {
+    if (value == null) return 0;
+
+    if (value is int) return value;
+
+    if (value is double) return value.round();
+
+    String text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return 0;
+
+    text = text.replaceAll("Rp", "").trim();
+
+    if (RegExp(r'^\d+\.\d{1,2}$').hasMatch(text)) {
+      return double.tryParse(text)?.round() ?? 0;
+    }
+
+    if (RegExp(r'^\d+,\d{1,2}$').hasMatch(text)) {
+      return double.tryParse(text.replaceAll(",", "."))?.round() ?? 0;
+    }
+
+    final cleaned = text.replaceAll(RegExp(r'[^0-9]'), '');
+
+    if (cleaned.isEmpty) return 0;
+
+    return int.tryParse(cleaned) ?? 0;
+  }
+
+  String cleanLower(dynamic value) {
+    return value?.toString().toLowerCase().trim() ?? "";
+  }
+
   List<dynamic> parseDynamicList(dynamic value) {
     if (value == null) return [];
 
-    if (value is List) {
-      return value;
-    }
+    if (value is List) return value;
 
     if (value is Map) {
       if (value['data'] is List) {
@@ -109,18 +165,217 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     return [];
   }
 
-  int parseIntValue(dynamic value) {
-    if (value == null) return 0;
+  String getKosNameForBackend() {
+    final property = toMap(kos["property"]);
+    final placeProperty = toMap(kos["place_property"]);
+    final placePropertyCamel = toMap(kos["placeProperty"]);
+    final placeProperties = toMap(kos["place_properties"]);
+    final placePropertiesCamel = toMap(kos["placeProperties"]);
+    final kosMap = toMap(kos["kos"]);
+    final kostMap = toMap(kos["kost"]);
+    final place = toMap(kos["place"]);
 
-    final cleaned = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+    final topKeys = [
+      "title",
+      "property_name",
+      "place_property_name",
+      "nama_kos",
+      "nama_kost",
+      "kos_name",
+      "kost_name",
+      "place_name",
+      "property_title",
+    ];
 
-    if (cleaned.isEmpty) return 0;
+    final propertyKeys = [
+      "title",
+      "property_name",
+      "place_property_name",
+      "nama_kos",
+      "nama_kost",
+      "kos_name",
+      "kost_name",
+      "place_name",
+      "property_title",
+      "name",
+      "nama",
+    ];
 
-    return int.tryParse(cleaned) ?? 0;
+    final fromKos = pickSafeTextFromMap(kos, topKeys);
+    if (fromKos.isNotEmpty) return fromKos;
+
+    final fromProperty = pickSafeTextFromMap(property, propertyKeys);
+    if (fromProperty.isNotEmpty) return fromProperty;
+
+    final fromPlaceProperty = pickSafeTextFromMap(placeProperty, propertyKeys);
+    if (fromPlaceProperty.isNotEmpty) return fromPlaceProperty;
+
+    final fromPlacePropertyCamel = pickSafeTextFromMap(
+      placePropertyCamel,
+      propertyKeys,
+    );
+    if (fromPlacePropertyCamel.isNotEmpty) return fromPlacePropertyCamel;
+
+    final fromPlaceProperties = pickSafeTextFromMap(
+      placeProperties,
+      propertyKeys,
+    );
+    if (fromPlaceProperties.isNotEmpty) return fromPlaceProperties;
+
+    final fromPlacePropertiesCamel = pickSafeTextFromMap(
+      placePropertiesCamel,
+      propertyKeys,
+    );
+    if (fromPlacePropertiesCamel.isNotEmpty) return fromPlacePropertiesCamel;
+
+    final fromKosMap = pickSafeTextFromMap(kosMap, propertyKeys);
+    if (fromKosMap.isNotEmpty) return fromKosMap;
+
+    final fromKostMap = pickSafeTextFromMap(kostMap, propertyKeys);
+    if (fromKostMap.isNotEmpty) return fromKostMap;
+
+    final fromPlace = pickSafeTextFromMap(place, propertyKeys);
+    if (fromPlace.isNotEmpty) return fromPlace;
+
+    final titleText = safeString(title);
+
+    if (titleText.isNotEmpty && titleText != "Kos") {
+      return titleText;
+    }
+
+    return "Nama kos tidak tersedia";
   }
 
-  String cleanLower(dynamic value) {
-    return value?.toString().toLowerCase().trim() ?? "";
+  String getKosAddressForBackend() {
+    final property = toMap(kos["property"]);
+    final placeProperty = toMap(kos["place_property"]);
+    final placePropertyCamel = toMap(kos["placeProperty"]);
+    final placeProperties = toMap(kos["place_properties"]);
+    final placePropertiesCamel = toMap(kos["placeProperties"]);
+    final kosMap = toMap(kos["kos"]);
+    final kostMap = toMap(kos["kost"]);
+    final place = toMap(kos["place"]);
+
+    final addressKeys = [
+      "address",
+      "alamat",
+      "location",
+      "lokasi",
+      "full_address",
+      "alamat_lengkap",
+      "property_address",
+      "place_property_address",
+    ];
+
+    final fromKos = pickSafeTextFromMap(kos, addressKeys);
+    if (fromKos.isNotEmpty) return fromKos;
+
+    final fromProperty = pickSafeTextFromMap(property, addressKeys);
+    if (fromProperty.isNotEmpty) return fromProperty;
+
+    final fromPlaceProperty = pickSafeTextFromMap(placeProperty, addressKeys);
+    if (fromPlaceProperty.isNotEmpty) return fromPlaceProperty;
+
+    final fromPlacePropertyCamel = pickSafeTextFromMap(
+      placePropertyCamel,
+      addressKeys,
+    );
+    if (fromPlacePropertyCamel.isNotEmpty) return fromPlacePropertyCamel;
+
+    final fromPlaceProperties = pickSafeTextFromMap(
+      placeProperties,
+      addressKeys,
+    );
+    if (fromPlaceProperties.isNotEmpty) return fromPlaceProperties;
+
+    final fromPlacePropertiesCamel = pickSafeTextFromMap(
+      placePropertiesCamel,
+      addressKeys,
+    );
+    if (fromPlacePropertiesCamel.isNotEmpty) return fromPlacePropertiesCamel;
+
+    final fromKosMap = pickSafeTextFromMap(kosMap, addressKeys);
+    if (fromKosMap.isNotEmpty) return fromKosMap;
+
+    final fromKostMap = pickSafeTextFromMap(kostMap, addressKeys);
+    if (fromKostMap.isNotEmpty) return fromKostMap;
+
+    final fromPlace = pickSafeTextFromMap(place, addressKeys);
+    if (fromPlace.isNotEmpty) return fromPlace;
+
+    final addressText = safeString(address);
+
+    if (addressText.isNotEmpty) {
+      return addressText;
+    }
+
+    return "Alamat belum tersedia";
+  }
+
+  Future<void> saveRentalPropertyCache({
+    required int rentalBookingId,
+    required int bookingId,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final propertyName = getKosNameForBackend();
+      final propertyAddress = getKosAddressForBackend();
+      final propertyIdValue = propertyId ?? 0;
+
+      final payload = {
+        "rental_booking_id": rentalBookingId,
+        "booking_id": bookingId,
+        "property_id": propertyIdValue,
+        "place_property_id": propertyIdValue,
+        "place_properties_id": propertyIdValue,
+        "property_name": propertyName,
+        "place_property_name": propertyName,
+        "nama_kos": propertyName,
+        "nama_kost": propertyName,
+        "kos_name": propertyName,
+        "kost_name": propertyName,
+        "property_title": propertyName,
+        "title": propertyName,
+        "property_address": propertyAddress,
+        "place_property_address": propertyAddress,
+        "address": propertyAddress,
+        "alamat": propertyAddress,
+        "location": propertyAddress,
+        "lokasi": propertyAddress,
+        "saved_at": DateTime.now().toIso8601String(),
+      };
+
+      await prefs.setString(
+        "rental_property_info_$rentalBookingId",
+        jsonEncode(payload),
+      );
+
+      if (propertyIdValue > 0) {
+        await prefs.setString(
+          "property_info_$propertyIdValue",
+          jsonEncode(payload),
+        );
+      }
+
+      final cachedRentalIds =
+          prefs.getStringList("cached_rental_property_ids") ?? [];
+
+      if (!cachedRentalIds.contains(rentalBookingId.toString())) {
+        cachedRentalIds.add(rentalBookingId.toString());
+
+        await prefs.setStringList(
+          "cached_rental_property_ids",
+          cachedRentalIds,
+        );
+      }
+
+      debugPrint("SAVE RENTAL PROPERTY CACHE:");
+      debugPrint(payload.toString());
+    } catch (e) {
+      debugPrint("SAVE RENTAL PROPERTY CACHE ERROR:");
+      debugPrint(e.toString());
+    }
   }
 
   int getPropertyIdFromBooking(Map<String, dynamic> map) {
@@ -137,6 +392,7 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
           map['place_property_id'] ??
           map['property_id'] ??
           map['placePropertyId'] ??
+          map['propertyId'] ??
           property?['id'] ??
           placeProperty?['id'] ??
           placePropertyCamel?['id'] ??
@@ -363,26 +619,34 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
         routeData = Map<String, dynamic>.from(argKos);
       }
 
-      propertyId = int.tryParse(
-        args['place_properties_id']?.toString() ??
-            args['place_property_id']?.toString() ??
-            args['property_id']?.toString() ??
-            args['id']?.toString() ??
-            "",
+      propertyId = parseIntValue(
+        args['place_properties_id'] ??
+            args['place_property_id'] ??
+            args['property_id'] ??
+            args['id'],
       );
 
-      title = args['title']?.toString() ?? args['name']?.toString() ?? "";
-      address = args['address']?.toString() ?? "";
+      title = safeString(args['title'] ?? args['name']);
+      address = safeString(args['address'] ?? args['alamat']);
 
       final owner = args['owner'];
 
       if (owner is Map) {
-        ownerId = int.tryParse(owner['id']?.toString() ?? "");
-        ownerName = owner['name']?.toString() ?? "Pemilik Kos";
+        ownerId = parseIntValue(owner['id']);
+        ownerName = safeString(owner['name']).isNotEmpty
+            ? safeString(owner['name'])
+            : "Pemilik Kos";
       }
 
-      ownerId ??= int.tryParse(args['owner_id']?.toString() ?? "");
-      ownerName = args['owner_name']?.toString() ?? ownerName;
+      if (ownerId == null || ownerId! <= 0) {
+        ownerId = parseIntValue(args['owner_id']);
+      }
+
+      final argsOwnerName = safeString(args['owner_name']);
+
+      if (argsOwnerName.isNotEmpty) {
+        ownerName = argsOwnerName;
+      }
     }
 
     if (widget.kos != null) {
@@ -394,33 +658,77 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     if (routeData.isNotEmpty) {
       kos = routeData;
 
-      propertyId ??= int.tryParse(
-        routeData['id']?.toString() ??
-            routeData['place_properties_id']?.toString() ??
-            routeData['place_property_id']?.toString() ??
-            routeData['property_id']?.toString() ??
-            "",
+      if (propertyId == null || propertyId! <= 0) {
+        propertyId = parseIntValue(
+          routeData['id'] ??
+              routeData['place_properties_id'] ??
+              routeData['place_property_id'] ??
+              routeData['property_id'] ??
+              routeData['propertyId'],
+        );
+      }
+
+      final safeTitle = safeString(
+        routeData['title'] ??
+            routeData['property_name'] ??
+            routeData['nama_kos'] ??
+            routeData['nama_kost'] ??
+            routeData['kos_name'] ??
+            routeData['kost_name'] ??
+            routeData['place_name'] ??
+            routeData['name'],
       );
 
-      title = title.trim().isNotEmpty
-          ? title
-          : routeData['title']?.toString() ??
-                routeData['name']?.toString() ??
-                "Kos";
+      if (title.trim().isEmpty && safeTitle.isNotEmpty) {
+        title = safeTitle;
+      }
 
-      address = address.trim().isNotEmpty
-          ? address
-          : routeData['address']?.toString() ?? "";
+      final safeAddress = safeString(
+        routeData['address'] ??
+            routeData['alamat'] ??
+            routeData['location'] ??
+            routeData['lokasi'],
+      );
+
+      if (address.trim().isEmpty && safeAddress.isNotEmpty) {
+        address = safeAddress;
+      }
 
       final owner = routeData['owner'];
 
       if (owner is Map) {
-        ownerId ??= int.tryParse(owner['id']?.toString() ?? "");
-        ownerName = owner['name']?.toString() ?? "Pemilik Kos";
+        if (ownerId == null || ownerId! <= 0) {
+          ownerId = parseIntValue(owner['id']);
+        }
+
+        final safeOwnerName = safeString(owner['name']);
+
+        if (safeOwnerName.isNotEmpty) {
+          ownerName = safeOwnerName;
+        }
       }
 
-      ownerId ??= int.tryParse(routeData['owner_id']?.toString() ?? "");
-      ownerName = routeData['owner_name']?.toString() ?? ownerName;
+      if (ownerId == null || ownerId! <= 0) {
+        ownerId = parseIntValue(routeData['owner_id']);
+      }
+
+      final safeOwnerName = safeString(routeData['owner_name']);
+
+      if (safeOwnerName.isNotEmpty) {
+        ownerName = safeOwnerName;
+      }
+    }
+
+    final fixedName = getKosNameForBackend();
+
+    if (fixedName.isNotEmpty && fixedName != "Nama kos tidak tersedia") {
+      title = fixedName;
+    }
+
+    final fixedAddress = getKosAddressForBackend();
+
+    if (fixedAddress.isNotEmpty && fixedAddress != "Alamat belum tersedia") {
+      address = fixedAddress;
     }
 
     if (title.trim().isEmpty) {
@@ -509,7 +817,33 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
   int getPriceValue(dynamic value) {
     if (value == null) return 0;
 
-    final cleaned = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+    if (value is int) return value;
+
+    if (value is double) return value.round();
+
+    String text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return 0;
+
+    text = text.replaceAll("Rp", "").trim();
+
+    if (RegExp(r'^\d+\.\d{1,2}$').hasMatch(text)) {
+      return double.tryParse(text)?.round() ?? 0;
+    }
+
+    if (RegExp(r'^\d+,\d{1,2}$').hasMatch(text)) {
+      return double.tryParse(text.replaceAll(",", "."))?.round() ?? 0;
+    }
+
+    if (RegExp(r',\d{1,2}$').hasMatch(text)) {
+      text = text.split(',').first;
+    }
+
+    if (RegExp(r'\.\d{1,2}$').hasMatch(text)) {
+      text = text.split('.').first;
+    }
+
+    final cleaned = text.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (cleaned.isEmpty) return 0;
 
@@ -595,12 +929,19 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
 
     raw = raw.replaceAll("Rp", "").trim();
 
-    if (RegExp(r',\d{1,2}$').hasMatch(raw)) {
-      raw = raw.split(',').first;
-    }
+    if (RegExp(r'^\d+\.\d{1,2}$').hasMatch(raw)) {
+      raw = (double.tryParse(raw)?.round() ?? 0).toString();
+    } else if (RegExp(r'^\d+,\d{1,2}$').hasMatch(raw)) {
+      raw = (double.tryParse(raw.replaceAll(",", "."))?.round() ?? 0)
+          .toString();
+    } else {
+      if (RegExp(r',\d{1,2}$').hasMatch(raw)) {
+        raw = raw.split(',').first;
+      }
 
-    if (RegExp(r'\.\d{1,2}$').hasMatch(raw)) {
-      raw = raw.split('.').first;
+      if (RegExp(r'\.\d{1,2}$').hasMatch(raw)) {
+        raw = raw.split('.').first;
+      }
     }
 
     final number = raw.replaceAll(RegExp(r'[^0-9]'), '');
@@ -861,12 +1202,31 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     String lastErrorMessage = "Gagal mengajukan sewa";
 
     for (final durationType in durationTypeCandidates) {
+      final propertyNameForBackend = getKosNameForBackend();
+      final propertyAddressForBackend = getKosAddressForBackend();
+
       final body = {
         'booking_id': bookingId.toString(),
 
         'place_properties_id': propertyId.toString(),
         'property_id': propertyId.toString(),
         'place_property_id': propertyId.toString(),
+
+        'property_name': propertyNameForBackend,
+        'place_property_name': propertyNameForBackend,
+        'nama_kos': propertyNameForBackend,
+        'nama_kost': propertyNameForBackend,
+        'kos_name': propertyNameForBackend,
+        'kost_name': propertyNameForBackend,
+        'property_title': propertyNameForBackend,
+        'title': propertyNameForBackend,
+
+        'property_address': propertyAddressForBackend,
+        'place_property_address': propertyAddressForBackend,
+        'address': propertyAddressForBackend,
+        'alamat': propertyAddressForBackend,
+        'location': propertyAddressForBackend,
+        'lokasi': propertyAddressForBackend,
 
         'rental_type': durationType,
         'rent_type': durationType,
@@ -996,49 +1356,6 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     return 0;
   }
 
-  bool hasInvoiceData(Map<String, dynamic> data) {
-    final invoice =
-        toMap(data['invoice']) ??
-        toMap(data['current_invoice']) ??
-        toMap(data['initial_invoice']);
-
-    if (invoice != null) return true;
-
-    final invoices = data['invoices'];
-
-    if (invoices is List && invoices.isNotEmpty) {
-      return true;
-    }
-
-    final rentalBooking =
-        toMap(data['rental_booking']) ??
-        toMap(data['rentalBooking']) ??
-        toMap(data['rental']);
-
-    if (rentalBooking != null) {
-      final rentalInvoice =
-          toMap(rentalBooking['invoice']) ??
-          toMap(rentalBooking['current_invoice']) ??
-          toMap(rentalBooking['initial_invoice']);
-
-      if (rentalInvoice != null) return true;
-
-      final rentalInvoices = rentalBooking['invoices'];
-
-      if (rentalInvoices is List && rentalInvoices.isNotEmpty) {
-        return true;
-      }
-    }
-
-    final nestedData = toMap(data['data']);
-
-    if (nestedData != null) {
-      return hasInvoiceData(nestedData);
-    }
-
-    return false;
-  }
-
   Future<void> submitRentalBooking() async {
     if (!validateForm()) return;
 
@@ -1088,9 +1405,17 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
         );
       }
 
+      await saveRentalPropertyCache(
+        rentalBookingId: rentalBookingId,
+        bookingId: bookingId,
+      );
+
       if (!mounted) return;
 
       showMessage("Pengajuan sewa berhasil dibuat", success: true);
+
+      final propertyNameForBackend = getKosNameForBackend();
+      final propertyAddressForBackend = getKosAddressForBackend();
 
       Navigator.pushReplacement(
         context,
@@ -1108,8 +1433,22 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
               'place_property_id': propertyId,
               'place_properties_id': propertyId,
 
-              'title': title,
-              'address': address,
+              'property_name': propertyNameForBackend,
+              'place_property_name': propertyNameForBackend,
+              'nama_kos': propertyNameForBackend,
+              'nama_kost': propertyNameForBackend,
+              'kos_name': propertyNameForBackend,
+              'kost_name': propertyNameForBackend,
+              'property_title': propertyNameForBackend,
+
+              'property_address': propertyAddressForBackend,
+              'place_property_address': propertyAddressForBackend,
+              'alamat': propertyAddressForBackend,
+              'location': propertyAddressForBackend,
+              'lokasi': propertyAddressForBackend,
+
+              'title': propertyNameForBackend,
+              'address': propertyAddressForBackend,
               'owner_id': ownerId,
               'owner_name': ownerName,
 
@@ -1350,21 +1689,246 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     );
   }
 
+  Widget rentalTypeSection() {
+    if (rentalOptions.isEmpty) {
+      return sectionCard(
+        title: "Jenis Sewa",
+        icon: Icons.home_work_rounded,
+        children: const [
+          Text(
+            "Harga sewa belum tersedia untuk kos ini.",
+            style: TextStyle(
+              color: Colors.black54,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return sectionCard(
+      title: "Jenis Sewa",
+      icon: Icons.home_work_rounded,
+      children: [
+        ...rentalOptions.map((option) {
+          final selected = selectedOption?.type == option.type;
+
+          return GestureDetector(
+            onTap: () {
+              setState(() {
+                selectedOption = option;
+                duration = 1;
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: selected ? softGreen : const Color(0xFFF4F6FA),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: selected ? primaryColor : Colors.grey.shade200,
+                  width: selected ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: selected ? primaryColor : Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      option.icon,
+                      color: selected ? Colors.white : primaryColor,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          option.title,
+                          style: TextStyle(
+                            color: primaryColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Rp ${formatRupiah(option.price)} ${option.priceLabel}",
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.radio_button_off_rounded,
+                    color: selected ? primaryColor : Colors.grey,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ],
+    );
+  }
+
+  Widget scheduleSection() {
+    return sectionCard(
+      title: "Jadwal Sewa",
+      icon: Icons.calendar_month_rounded,
+      children: [
+        GestureDetector(
+          onTap: pickStartDate,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F6FA),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.event_rounded, color: primaryColor),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Tanggal Mulai",
+                        style: TextStyle(
+                          color: Colors.black54,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        formatReadableDate(startDate),
+                        style: TextStyle(
+                          color: primaryColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.keyboard_arrow_down_rounded, color: primaryColor),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F6FA),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.timelapse_rounded, color: primaryColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Durasi: $duration ${selectedOption?.unitLabel ?? ''}",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: duration <= 1
+                    ? null
+                    : () {
+                        setState(() {
+                          duration--;
+                        });
+                      },
+                icon: const Icon(Icons.remove_circle_outline_rounded),
+                color: primaryColor,
+              ),
+              Text(
+                "$duration",
+                style: TextStyle(
+                  color: primaryColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    duration++;
+                  });
+                },
+                icon: const Icon(Icons.add_circle_outline_rounded),
+                color: primaryColor,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: softGreen,
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.logout_rounded, color: primaryColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Selesai: ${formatReadableDate(endDate)}",
+                  style: TextStyle(
+                    color: primaryColor,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget paymentInfoSection() {
     return sectionCard(
-      title: "Informasi Pembayaran",
-      icon: Icons.account_balance_wallet_outlined,
+      title: "Data Pembayaran",
+      icon: Icons.account_balance_wallet_rounded,
       children: [
         inputField(
           controller: senderNameController,
           label: "Nama Pengirim",
-          hint: "Contoh: Rahes",
-          icon: Icons.person_outline_rounded,
+          hint: "Opsional, contoh: Rahes",
+          icon: Icons.person_rounded,
         ),
         inputField(
           controller: notesController,
           label: "Catatan",
-          hint: "Contoh: Pembayaran DP sewa kos",
+          hint: "Opsional, contoh: pembayaran sewa kos",
           icon: Icons.notes_rounded,
           maxLines: 3,
         ),
@@ -1372,361 +1936,32 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
     );
   }
 
-  Widget rentalOptionCard(_RentalOption option) {
-    final isSelected = selectedOption?.type == option.type;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(20),
-      onTap: () {
-        setState(() {
-          selectedOption = option;
-          duration = 1;
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isSelected ? primaryColor : const Color(0xFFF4F6FA),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? primaryColor : Colors.grey.shade200,
-            width: 1.4,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: primaryColor.withOpacity(0.18),
-                    blurRadius: 16,
-                    offset: const Offset(0, 8),
-                  ),
-                ]
-              : [],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              option.icon,
-              color: isSelected ? Colors.white : primaryColor,
-              size: 26,
-            ),
-            const Spacer(),
-            Text(
-              option.title,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Colors.black,
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Rp ${formatRupiah(option.price)}",
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isSelected ? Colors.white : primaryColor,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              option.priceLabel,
-              style: TextStyle(
-                color: isSelected
-                    ? Colors.white.withOpacity(0.72)
-                    : Colors.grey.shade600,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget rentalTypeSection() {
-    return sectionCard(
-      title: "Pilih Jenis Sewa",
-      icon: Icons.sell_outlined,
-      children: [
-        if (rentalOptions.isEmpty)
-          emptyState(
-            icon: Icons.money_off_outlined,
-            text: "Harga sewa belum tersedia",
-          )
-        else
-          GridView.builder(
-            itemCount: rentalOptions.length,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-              childAspectRatio: 1.22,
-            ),
-            itemBuilder: (context, index) {
-              return rentalOptionCard(rentalOptions[index]);
-            },
-          ),
-      ],
-    );
-  }
-
-  Widget dateButton() {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: pickStartDate,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF4F6FA),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.grey.shade200),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: softGreen,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.calendar_month_rounded,
-                color: primaryColor,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Tanggal Mulai Sewa",
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    formatReadableDate(startDate),
-                    style: TextStyle(
-                      color: primaryColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.keyboard_arrow_right_rounded,
-              color: Colors.grey.shade500,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget durationSelector() {
-    final unit = selectedOption?.unitLabel ?? "durasi";
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F6FA),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(color: softGreen, shape: BoxShape.circle),
-            child: Icon(Icons.timelapse_rounded, color: primaryColor, size: 22),
-          ),
-          const SizedBox(width: 13),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Durasi Sewa",
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "$duration $unit",
-                  style: TextStyle(
-                    color: primaryColor,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Row(
-            children: [
-              smallCircleButton(
-                icon: Icons.remove_rounded,
-                onTap: () {
-                  if (duration <= 1) return;
-
-                  setState(() {
-                    duration--;
-                  });
-                },
-              ),
-              const SizedBox(width: 8),
-              smallCircleButton(
-                icon: Icons.add_rounded,
-                onTap: () {
-                  setState(() {
-                    duration++;
-                  });
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget smallCircleButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
-        child: Icon(icon, color: Colors.white, size: 20),
-      ),
-    );
-  }
-
-  Widget scheduleSection() {
-    return sectionCard(
-      title: "Jadwal & Durasi",
-      icon: Icons.event_available_rounded,
-      children: [dateButton(), const SizedBox(height: 12), durationSelector()],
-    );
-  }
-
-  Widget summaryItem({
-    required IconData icon,
-    required String title,
-    required String value,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F6FA),
-        borderRadius: BorderRadius.circular(17),
-      ),
+  Widget summaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 11),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: primaryColor, size: 21),
-          const SizedBox(width: 11),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w900,
-                    height: 1.25,
-                  ),
-                ),
-              ],
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget totalBox() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [primaryColor, secondColor],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: primaryColor.withOpacity(0.18),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.payments_rounded, color: Colors.white, size: 28),
           const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Total Pembayaran",
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.76),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  "Rp ${formatRupiah(totalPrice)}",
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: primaryColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
         ],
@@ -1735,81 +1970,20 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
   }
 
   Widget summarySection() {
-    final option = selectedOption;
-
     return sectionCard(
-      title: "Ringkasan Sewa",
-      icon: Icons.fact_check_outlined,
+      title: "Ringkasan",
+      icon: Icons.receipt_long_rounded,
       children: [
-        summaryItem(icon: Icons.home_work_outlined, title: "Kos", value: title),
-        summaryItem(
-          icon: Icons.sell_outlined,
-          title: "Jenis Sewa",
-          value: option == null
-              ? "Belum dipilih"
-              : "${option.title} • Rp ${formatRupiah(option.price)} ${option.priceLabel}",
-        ),
-        summaryItem(
-          icon: Icons.timelapse_rounded,
-          title: "Durasi",
-          value: option == null
-              ? "$duration durasi"
-              : "$duration ${option.unitLabel}",
-        ),
-        summaryItem(
-          icon: Icons.calendar_today_rounded,
-          title: "Tanggal Mulai",
-          value: formatReadableDate(startDate),
-        ),
-        summaryItem(
-          icon: Icons.event_available_rounded,
-          title: "Estimasi Selesai",
-          value: formatReadableDate(endDate),
-        ),
-        summaryItem(
-          icon: Icons.person_outline_rounded,
-          title: "Nama Pengirim",
-          value: senderNameController.text.trim().isEmpty
-              ? "-"
-              : senderNameController.text.trim(),
-        ),
-        summaryItem(
-          icon: Icons.notes_rounded,
-          title: "Catatan",
-          value: notesController.text.trim().isEmpty
-              ? "-"
-              : notesController.text.trim(),
-        ),
-        const SizedBox(height: 6),
-        totalBox(),
+        summaryRow("Nama Kos", getKosNameForBackend()),
+        summaryRow("Owner", ownerName),
+        summaryRow("Jenis Sewa", selectedOption?.title ?? "-"),
+        summaryRow("Durasi", "$duration ${selectedOption?.unitLabel ?? ''}"),
+        summaryRow("Mulai", formatReadableDate(startDate)),
+        summaryRow("Selesai", formatReadableDate(endDate)),
+        const Divider(height: 24),
+        summaryRow("Harga Satuan", "Rp ${formatRupiah(selectedOption?.price)}"),
+        summaryRow("Total", "Rp ${formatRupiah(totalPrice)}"),
       ],
-    );
-  }
-
-  Widget emptyState({required IconData icon, required String text}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF4F6FA),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey.shade500),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

@@ -884,6 +884,31 @@ class _PaymentState extends State<Payment> {
       "payment_method": "transfer",
       "notes": notes.trim(),
 
+      "property_name": title,
+      "place_property_name": title,
+      "nama_kos": title,
+      "nama_kost": title,
+      "kos_name": title,
+      "kost_name": title,
+      "property_title": title,
+      "title": title,
+
+      "property_address": address,
+      "place_property_address": address,
+      "address": address,
+      "alamat": address,
+      "location": address,
+      "lokasi": address,
+
+      if (propertyId != null && propertyId! > 0)
+        "property_id": propertyId.toString(),
+
+      if (propertyId != null && propertyId! > 0)
+        "place_property_id": propertyId.toString(),
+
+      if (propertyId != null && propertyId! > 0)
+        "place_properties_id": propertyId.toString(),
+
       "period_start": startDate,
       "period_end": endDate,
       "start_date": startDate,
@@ -907,6 +932,12 @@ class _PaymentState extends State<Payment> {
 
     debugPrint("UPLOAD PAYMENT FIELDS:");
     debugPrint(request.fields.toString());
+
+    debugPrint("UPLOAD PAYMENT PROPERTY NAME:");
+    debugPrint(title);
+
+    debugPrint("UPLOAD PAYMENT PROPERTY ADDRESS:");
+    debugPrint(address);
 
     debugPrint("UPLOAD PAYMENT FILE FIELD:");
     debugPrint("payment_proof");

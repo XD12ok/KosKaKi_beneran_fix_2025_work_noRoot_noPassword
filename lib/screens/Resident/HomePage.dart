@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Owner/ListChat.dart';
@@ -9,6 +9,9 @@ import 'package:koskaki/screens/Resident/QrScan.dart';
 import 'package:koskaki/screens/Resident/SearchResult.dart';
 import 'package:koskaki/service/api_service.dart';
 import 'package:koskaki/screens/Resident/RiwayatSewa.dart';
+import 'package:koskaki/screens/Resident/Tunggakan.dart';
+import 'package:koskaki/screens/Resident/FamilyUser.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const Color primaryColor = Color(0xFF2D2F8F);
 const Color secondaryColor = Color(0xFF5B5FEF);
@@ -31,6 +34,15 @@ class _HomePageState extends State<HomePage> {
 
   bool loadingUser = true;
   bool loadingKos = true;
+  bool loadingTunggakanBadge = true;
+  bool loadingChatBadge = true;
+
+  int totalTunggakan = 0;
+  int totalNominalTunggakan = 0;
+  int totalChatBadge = 0;
+
+  Timer? chatBadgeTimer;
+  int? currentUserIdForChatBadge;
 
   KosFilter selectedFilter = KosFilter.rekomendasi;
 
@@ -39,6 +51,619 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     loadUser();
     loadKosFromApi();
+    loadTunggakanBadge();
+  }
+
+  @override
+  void dispose() {
+    chatBadgeTimer?.cancel();
+    super.dispose();
+  }
+
+  void startChatBadgeTimer() {
+    chatBadgeTimer?.cancel();
+
+    chatBadgeTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      loadChatBadge(showLoading: false);
+    });
+  }
+
+  Map<String, dynamic>? toMap(dynamic value) {
+    if (value is Map<String, dynamic>) return value;
+
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+
+    return null;
+  }
+
+  String cleanText(dynamic value) {
+    if (value == null) return "";
+
+    if (value is Map || value is List) return "";
+
+    return value.toString().trim();
+  }
+
+  List<dynamic> normalizeConversationResult(dynamic result) {
+    if (result is List) return result;
+
+    final resultMap = toMap(result);
+
+    if (resultMap == null) return [];
+
+    final data = resultMap['data'];
+    final conversationsData = resultMap['conversations'];
+    final chatsData = resultMap['chats'];
+    final itemsData = resultMap['items'];
+
+    if (data is List) return data;
+    if (conversationsData is List) return conversationsData;
+    if (chatsData is List) return chatsData;
+    if (itemsData is List) return itemsData;
+
+    final dataMap = toMap(data);
+
+    if (dataMap != null) {
+      final nestedConversations = dataMap['conversations'];
+      final nestedChats = dataMap['chats'];
+      final nestedItems = dataMap['items'];
+
+      if (nestedConversations is List) return nestedConversations;
+      if (nestedChats is List) return nestedChats;
+      if (nestedItems is List) return nestedItems;
+    }
+
+    return [];
+  }
+
+  int getConversationIdForBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return 0;
+
+    final conversation = toMap(data['conversation']);
+
+    return toInt(data['id']) ??
+        toInt(data['conversation_id']) ??
+        toInt(data['conversationId']) ??
+        toInt(conversation?['id']) ??
+        0;
+  }
+
+  int? getApiUnreadCountForBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return null;
+
+    final keys = [
+      'unread_count',
+      'unread',
+      'total_unread',
+      'unread_messages',
+      'unread_messages_count',
+      'new_message_count',
+      'new_messages_count',
+      'resident_unread_count',
+      'user_unread_count',
+      'unread_count_resident',
+      'unread_count_user',
+    ];
+
+    for (final key in keys) {
+      if (data.containsKey(key)) {
+        return toInt(data[key]) ?? 0;
+      }
+    }
+
+    final unreadMap = toMap(data['unread_counts']);
+
+    if (unreadMap != null) {
+      final residentUnread =
+          toInt(unreadMap['resident']) ??
+          toInt(unreadMap['user']) ??
+          toInt(unreadMap['current_user']) ??
+          toInt(unreadMap['resident_count']) ??
+          toInt(unreadMap['user_count']);
+
+      if (residentUnread != null) {
+        return residentUnread;
+      }
+    }
+
+    return null;
+  }
+
+  dynamic getLastMessageValueForBadge(Map<String, dynamic> data) {
+    final keys = [
+      'last_message',
+      'lastMessage',
+      'latest_message',
+      'latestMessage',
+      'recent_message',
+      'recentMessage',
+      'last_chat',
+      'lastChat',
+      'message',
+    ];
+
+    for (final key in keys) {
+      final value = data[key];
+
+      if (value != null) {
+        if (value is String && value.trim().isEmpty) continue;
+
+        return value;
+      }
+    }
+
+    final messages = data['messages'];
+
+    if (messages is List && messages.isNotEmpty) {
+      return messages.last;
+    }
+
+    final chatMessages = data['chat_messages'];
+
+    if (chatMessages is List && chatMessages.isNotEmpty) {
+      return chatMessages.last;
+    }
+
+    return null;
+  }
+
+  Map<String, dynamic>? getLastMessageMapForBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return null;
+
+    final lastMessage = getLastMessageValueForBadge(data);
+    final lastMessageMap = toMap(lastMessage);
+
+    if (lastMessageMap == null) return null;
+
+    final nestedData = toMap(lastMessageMap['data']);
+
+    if (nestedData != null) {
+      return nestedData;
+    }
+
+    return lastMessageMap;
+  }
+
+  String getTextFromMessageMapForBadge(Map<String, dynamic>? messageMap) {
+    if (messageMap == null) return "";
+
+    final keys = [
+      'message',
+      'body',
+      'text',
+      'content',
+      'pesan',
+      'isi_pesan',
+      'last_message',
+      'lastMessage',
+      'latest_message',
+      'latestMessage',
+    ];
+
+    for (final key in keys) {
+      final value = cleanText(messageMap[key]);
+
+      if (value.isNotEmpty) {
+        return value;
+      }
+    }
+
+    final nestedMessage = toMap(messageMap['message']);
+    final nestedData = toMap(messageMap['data']);
+
+    final nestedMessageText = getTextFromMessageMapForBadge(nestedMessage);
+
+    if (nestedMessageText.isNotEmpty) {
+      return nestedMessageText;
+    }
+
+    final nestedDataText = getTextFromMessageMapForBadge(nestedData);
+
+    if (nestedDataText.isNotEmpty) {
+      return nestedDataText;
+    }
+
+    return "";
+  }
+
+  DateTime? parseDateTimeForChatBadge(dynamic value) {
+    final raw = cleanText(value);
+
+    if (raw.isEmpty) return null;
+
+    DateTime? parsed = DateTime.tryParse(raw);
+
+    parsed ??= DateTime.tryParse(raw.replaceFirst(" ", "T"));
+
+    if (parsed == null) return null;
+
+    return parsed.toLocal();
+  }
+
+  DateTime? getChatDateForBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return null;
+
+    final lastMessageMap = getLastMessageMapForBadge(chat);
+
+    final dateFromMessage =
+        parseDateTimeForChatBadge(lastMessageMap?['created_at']) ??
+        parseDateTimeForChatBadge(lastMessageMap?['sent_at']) ??
+        parseDateTimeForChatBadge(lastMessageMap?['time']) ??
+        parseDateTimeForChatBadge(lastMessageMap?['timestamp']) ??
+        parseDateTimeForChatBadge(lastMessageMap?['updated_at']);
+
+    if (dateFromMessage != null) {
+      return dateFromMessage;
+    }
+
+    return parseDateTimeForChatBadge(data['last_message_at']) ??
+        parseDateTimeForChatBadge(data['latest_message_at']) ??
+        parseDateTimeForChatBadge(data['last_chat_at']) ??
+        parseDateTimeForChatBadge(data['updated_at']) ??
+        parseDateTimeForChatBadge(data['created_at']) ??
+        parseDateTimeForChatBadge(data['time']);
+  }
+
+  String getRawLastMessageForBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return "";
+
+    final lastMessage = getLastMessageValueForBadge(data);
+    final lastMessageMap = toMap(lastMessage);
+
+    if (lastMessageMap != null) {
+      final textFromMap = getTextFromMessageMapForBadge(lastMessageMap);
+
+      if (textFromMap.isNotEmpty) {
+        return textFromMap;
+      }
+    }
+
+    final textFromDirectValue = cleanText(lastMessage);
+
+    if (textFromDirectValue.isNotEmpty) {
+      return textFromDirectValue;
+    }
+
+    final topLevelText = getTextFromMessageMapForBadge(data);
+
+    if (topLevelText.isNotEmpty) {
+      return topLevelText;
+    }
+
+    return "";
+  }
+
+  String getLastMessageKeyForBadge(dynamic chat) {
+    final data = toMap(chat);
+
+    if (data == null) return "";
+
+    final lastMessageMap = getLastMessageMapForBadge(chat);
+    final chatDate = getChatDateForBadge(chat);
+    final rawText = getRawLastMessageForBadge(chat);
+
+    final id = cleanText(lastMessageMap?['id']).isNotEmpty
+        ? cleanText(lastMessageMap?['id'])
+        : cleanText(data['last_message_id']).isNotEmpty
+        ? cleanText(data['last_message_id'])
+        : cleanText(data['latest_message_id']);
+
+    final dateText = chatDate?.toIso8601String() ?? "";
+
+    return "$id|$dateText|$rawText";
+  }
+
+  bool isLastMessageMineForBadge(dynamic chat) {
+    final lastMessageMap = getLastMessageMapForBadge(chat);
+
+    if (lastMessageMap == null) return false;
+
+    if (lastMessageMap['is_me'] != null) {
+      return lastMessageMap['is_me'] == true;
+    }
+
+    final senderId =
+        toInt(lastMessageMap['sender_id']) ??
+        toInt(lastMessageMap['user_id']) ??
+        toInt(lastMessageMap['from_user_id']) ??
+        toInt(toMap(lastMessageMap['sender'])?['id']) ??
+        toInt(toMap(lastMessageMap['user'])?['id']);
+
+    if (currentUserIdForChatBadge != null && senderId != null) {
+      return senderId == currentUserIdForChatBadge;
+    }
+
+    final senderType = cleanText(lastMessageMap['sender_type']).toLowerCase();
+
+    if (senderType == "resident" || senderType == "user") {
+      return true;
+    }
+
+    final from = cleanText(lastMessageMap['from']).toLowerCase();
+
+    if (from == "me" || from == "resident" || from == "user") {
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<Map<String, int>> readLocalChatUnreadMap() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString("home_chat_unread_counts");
+
+      if (raw == null || raw.trim().isEmpty) return {};
+
+      final decoded = jsonDecode(raw);
+
+      if (decoded is! Map) return {};
+
+      final result = <String, int>{};
+
+      decoded.forEach((key, value) {
+        result[key.toString()] = toInt(value) ?? 0;
+      });
+
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<Map<String, String>> readLocalChatKeyMap() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString("home_chat_last_keys");
+
+      if (raw == null || raw.trim().isEmpty) return {};
+
+      final decoded = jsonDecode(raw);
+
+      if (decoded is! Map) return {};
+
+      final result = <String, String>{};
+
+      decoded.forEach((key, value) {
+        result[key.toString()] = value?.toString() ?? "";
+      });
+
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> saveLocalChatBadgeData({
+    required Map<String, int> unreadMap,
+    required Map<String, String> keyMap,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setString("home_chat_unread_counts", jsonEncode(unreadMap));
+    await prefs.setString("home_chat_last_keys", jsonEncode(keyMap));
+  }
+
+  Future<void> clearLocalChatBadge() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.remove("home_chat_unread_counts");
+
+    if (!mounted) return;
+
+    setState(() {
+      totalChatBadge = 0;
+    });
+  }
+
+  Future<void> loadChatBadge({
+    bool showLoading = true,
+    bool resetLocal = false,
+  }) async {
+    try {
+      if (showLoading && mounted) {
+        setState(() {
+          loadingChatBadge = true;
+        });
+      }
+
+      final api = ApiService();
+      final token = cleanToken(await api.getToken());
+
+      if (token.isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          totalChatBadge = 0;
+          loadingChatBadge = false;
+        });
+
+        return;
+      }
+
+      if (currentUserIdForChatBadge == null) {
+        final user = await api.getUser();
+
+        final userMap = toMap(user);
+        final dataUserMap = toMap(userMap?['data']);
+        final nestedUserMap = toMap(userMap?['user']);
+
+        currentUserIdForChatBadge =
+            toInt(userMap?['id']) ??
+            toInt(dataUserMap?['id']) ??
+            toInt(nestedUserMap?['id']);
+      }
+
+      final result = await api.getConversations();
+      final conversations = normalizeConversationResult(result);
+
+      final localUnreadMap = resetLocal
+          ? <String, int>{}
+          : await readLocalChatUnreadMap();
+      final localKeyMap = await readLocalChatKeyMap();
+
+      bool hasApiUnread = false;
+      int apiUnreadTotal = 0;
+
+      for (final chat in conversations) {
+        final conversationId = getConversationIdForBadge(chat);
+
+        if (conversationId <= 0) continue;
+
+        final idKey = conversationId.toString();
+        final newKey = getLastMessageKeyForBadge(chat);
+        final oldKey = localKeyMap[idKey];
+
+        final apiUnread = getApiUnreadCountForBadge(chat);
+
+        if (apiUnread != null) {
+          hasApiUnread = true;
+          apiUnreadTotal += apiUnread;
+        } else {
+          final isNewMessage =
+              oldKey != null &&
+              oldKey.isNotEmpty &&
+              newKey.isNotEmpty &&
+              oldKey != newKey;
+
+          final lastMessageMine = isLastMessageMineForBadge(chat);
+
+          if (!resetLocal && isNewMessage && !lastMessageMine) {
+            localUnreadMap[idKey] = (localUnreadMap[idKey] ?? 0) + 1;
+          }
+        }
+
+        if (newKey.isNotEmpty) {
+          localKeyMap[idKey] = newKey;
+        }
+      }
+
+      await saveLocalChatBadgeData(
+        unreadMap: localUnreadMap,
+        keyMap: localKeyMap,
+      );
+
+      final localTotal = localUnreadMap.values.fold<int>(
+        0,
+        (previous, value) => previous + value,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        totalChatBadge = hasApiUnread ? apiUnreadTotal : localTotal;
+        loadingChatBadge = false;
+      });
+    } catch (e) {
+      debugPrint("ERROR LOAD CHAT BADGE:");
+      debugPrint(e.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        totalChatBadge = 0;
+        loadingChatBadge = false;
+      });
+    }
+  }
+
+  Future<void> openChatListPage() async {
+    await clearLocalChatBadge();
+
+    if (!mounted) return;
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ChatListOwnerPage()),
+    );
+
+    if (!mounted) return;
+
+    await loadChatBadge(resetLocal: true);
+  }
+
+  bool isGraceActiveForBadge(Map<String, dynamic> booking) {
+    final status = booking["status"]?.toString().toLowerCase().trim() ?? "";
+
+    final paymentStatus =
+        booking["payment_status"]?.toString().toLowerCase().trim() ?? "";
+
+    final rentalBooking = booking["rental_booking"] ?? booking["rentalBooking"];
+
+    String nestedStatus = "";
+    String nestedPaymentStatus = "";
+
+    if (rentalBooking is Map) {
+      nestedStatus =
+          rentalBooking["status"]?.toString().toLowerCase().trim() ?? "";
+
+      nestedPaymentStatus =
+          rentalBooking["payment_status"]?.toString().toLowerCase().trim() ??
+          "";
+    }
+
+    final isGrace =
+        status == "grace" ||
+        paymentStatus == "grace" ||
+        nestedStatus == "grace" ||
+        nestedPaymentStatus == "grace";
+
+    if (!isGrace) return false;
+
+    final graceUntil = parseNullableDate(
+      booking["grace_until"] ??
+          booking["graceUntil"] ??
+          (rentalBooking is Map ? rentalBooking["grace_until"] : null) ??
+          (rentalBooking is Map ? rentalBooking["graceUntil"] : null),
+    );
+
+    if (graceUntil == null) return true;
+
+    return DateTime.now().isBefore(endOfDay(graceUntil));
+  }
+
+  bool isPendingPaymentStatusForBadge(dynamic value) {
+    final status = value?.toString().toLowerCase().trim() ?? "";
+
+    return status == "pending" ||
+        status == "waiting" ||
+        status == "waiting_confirmation" ||
+        status == "waiting_verification" ||
+        status == "unverified" ||
+        status == "menunggu";
+  }
+
+  bool hasPendingPaymentForInvoiceBadge(Map<String, dynamic> invoice) {
+    final payments =
+        invoice["payments"] ??
+        invoice["rental_payments"] ??
+        invoice["rentalPayments"];
+
+    if (payments is List) {
+      for (final item in payments) {
+        if (item is Map) {
+          final payment = Map<String, dynamic>.from(item);
+
+          if (isPendingPaymentStatusForBadge(payment["status"])) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
   }
 
   Future<void> loadUser() async {
@@ -151,18 +776,328 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  String cleanToken(String? token) {
+    if (token == null) return "";
+
+    String cleaned = token.trim();
+
+    if (cleaned.toLowerCase().startsWith("bearer ")) {
+      cleaned = cleaned.substring(7).trim();
+    }
+
+    cleaned = cleaned.replaceAll('"', '').replaceAll("'", "").trim();
+
+    return cleaned;
+  }
+
+  Map<String, String> authHeaders(String token) {
+    final cleanedToken = cleanToken(token);
+
+    return {
+      "Accept": "application/json",
+      "Authorization": "Bearer $cleanedToken",
+      "X-Requested-With": "XMLHttpRequest",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0",
+    };
+  }
+
+  List<Map<String, dynamic>> parseDataList(dynamic decoded) {
+    dynamic rawData;
+
+    if (decoded is Map<String, dynamic>) {
+      rawData = decoded["data"];
+
+      if (rawData is Map<String, dynamic> && rawData["data"] != null) {
+        rawData = rawData["data"];
+      }
+
+      if (rawData == null && decoded["invoices"] != null) {
+        rawData = decoded["invoices"];
+      }
+
+      if (rawData == null && decoded["rental_bookings"] != null) {
+        rawData = decoded["rental_bookings"];
+      }
+    } else {
+      rawData = decoded;
+    }
+
+    if (rawData is List) {
+      return rawData
+          .where((item) => item is Map)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+    }
+
+    if (rawData is Map) {
+      return [Map<String, dynamic>.from(rawData)];
+    }
+
+    return [];
+  }
+
   int? toInt(dynamic value) {
     if (value == null) return null;
 
-    final text = value.toString();
+    if (value is int) return value;
+
+    if (value is double) return value.round();
+
+    String text = value.toString().trim();
 
     if (text.isEmpty || text == "null") return null;
+
+    text = text.replaceAll("Rp", "").trim();
+
+    if (RegExp(r',\d{1,2}$').hasMatch(text)) {
+      text = text.split(',').first;
+    }
+
+    if (RegExp(r'\.\d{1,2}$').hasMatch(text)) {
+      text = text.split('.').first;
+    }
+
+    final normalNumber = double.tryParse(text);
+
+    if (normalNumber != null) {
+      return normalNumber.round();
+    }
 
     final cleanText = text.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (cleanText.isEmpty) return null;
 
     return int.tryParse(cleanText);
+  }
+
+  int getRentalBookingId(Map<String, dynamic> item) {
+    return toInt(
+          item["rental_booking_id"] ??
+              item["rentalBookingId"] ??
+              item["rental_id"] ??
+              item["id"],
+        ) ??
+        0;
+  }
+
+  DateTime? parseNullableDate(dynamic value) {
+    if (value == null) return null;
+
+    final text = value.toString().trim();
+
+    if (text.isEmpty || text == "null") return null;
+
+    return DateTime.tryParse(text);
+  }
+
+  DateTime endOfDay(DateTime date) {
+    return DateTime(date.year, date.month, date.day, 23, 59, 59);
+  }
+
+  int getInvoicePayableAmount(Map<String, dynamic> invoice) {
+    final remainingAmount = toInt(invoice["remaining_amount"]);
+
+    if (remainingAmount != null && remainingAmount > 0) {
+      return remainingAmount;
+    }
+
+    final totalAmount =
+        toInt(
+          invoice["total_amount"] ??
+              invoice["amount"] ??
+              invoice["grand_total"],
+        ) ??
+        0;
+
+    final paidAmount = toInt(invoice["paid_amount"]) ?? 0;
+
+    final result = totalAmount - paidAmount;
+
+    return result > 0 ? result : 0;
+  }
+
+  bool isInvoiceOverdueForBadge(Map<String, dynamic> invoice) {
+    final status = invoice["status"]?.toString().toLowerCase().trim() ?? "";
+
+    if (status == "overdue" || status == "terlambat") {
+      return true;
+    }
+
+    final dueDate = parseNullableDate(
+      invoice["due_date"] ??
+          invoice["dueDate"] ??
+          invoice["payment_due_date"] ??
+          invoice["paymentDueDate"] ??
+          invoice["deadline"] ??
+          invoice["period_end"] ??
+          invoice["periodEnd"],
+    );
+
+    if (dueDate == null) return false;
+
+    return DateTime.now().isAfter(endOfDay(dueDate));
+  }
+
+  bool isInvoiceTunggakanForBadge(
+    Map<String, dynamic> invoice, {
+    required Map<String, dynamic> booking,
+  }) {
+    final amount = getInvoicePayableAmount(invoice);
+
+    if (amount <= 0) return false;
+
+    if (hasPendingPaymentForInvoiceBadge(invoice)) return false;
+
+    return isGraceActiveForBadge(booking) || isInvoiceOverdueForBadge(invoice);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchInvoicesForBadge({
+    required int rentalBookingId,
+    required String token,
+  }) async {
+    final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+
+    final urls = [
+      "${ApiService.baseUrl}/rental-bookings/$rentalBookingId/invoices?_=$cacheBuster",
+      "${ApiService.baseUrl}/rental-booking/$rentalBookingId/invoices?_=$cacheBuster",
+      "${ApiService.baseUrl}/invoices/rental-booking/$rentalBookingId?_=$cacheBuster",
+      "${ApiService.baseUrl}/invoices/$rentalBookingId?_=$cacheBuster",
+    ];
+
+    for (final url in urls) {
+      try {
+        final response = await http.get(
+          Uri.parse(url),
+          headers: authHeaders(token),
+        );
+
+        debugPrint("BADGE TUNGGAKAN INVOICE URL:");
+        debugPrint(url);
+        debugPrint("BADGE TUNGGAKAN INVOICE STATUS:");
+        debugPrint(response.statusCode.toString());
+        debugPrint("BADGE TUNGGAKAN INVOICE BODY:");
+        debugPrint(response.body);
+
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(response.body);
+          final invoices = parseDataList(decoded);
+
+          return invoices.where((invoice) {
+            final id = toInt(invoice["rental_booking_id"]);
+
+            if (id == null || id <= 0) return true;
+
+            return id == rentalBookingId;
+          }).toList();
+        }
+
+        if (response.statusCode != 404 && response.statusCode != 405) {
+          return [];
+        }
+      } catch (e) {
+        debugPrint("ERROR FETCH BADGE TUNGGAKAN INVOICE:");
+        debugPrint(e.toString());
+      }
+    }
+
+    return [];
+  }
+
+  Future<void> loadTunggakanBadge() async {
+    try {
+      if (mounted) {
+        setState(() {
+          loadingTunggakanBadge = true;
+        });
+      }
+
+      final api = ApiService();
+      final token = cleanToken(await api.getToken());
+
+      if (token.isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          totalTunggakan = 0;
+          totalNominalTunggakan = 0;
+          loadingTunggakanBadge = false;
+        });
+
+        return;
+      }
+
+      final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+
+      final response = await http.get(
+        Uri.parse("${ApiService.baseUrl}/rental-bookings?_=$cacheBuster"),
+        headers: authHeaders(token),
+      );
+
+      debugPrint("BADGE TUNGGAKAN BOOKING STATUS:");
+      debugPrint(response.statusCode.toString());
+      debugPrint("BADGE TUNGGAKAN BOOKING BODY:");
+      debugPrint(response.body);
+
+      if (response.statusCode != 200) {
+        if (!mounted) return;
+
+        setState(() {
+          totalTunggakan = 0;
+          totalNominalTunggakan = 0;
+          loadingTunggakanBadge = false;
+        });
+
+        return;
+      }
+
+      final decoded = jsonDecode(response.body);
+      final bookings = parseDataList(decoded);
+
+      int count = 0;
+      int totalAmount = 0;
+
+      for (final rawBooking in bookings) {
+        final booking = Map<String, dynamic>.from(rawBooking);
+        final rentalBookingId = getRentalBookingId(booking);
+
+        if (rentalBookingId <= 0) continue;
+
+        final invoices = await fetchInvoicesForBadge(
+          rentalBookingId: rentalBookingId,
+          token: token,
+        );
+
+        for (final invoice in invoices) {
+          final invoiceMap = Map<String, dynamic>.from(invoice);
+
+          if (isInvoiceTunggakanForBadge(invoiceMap, booking: booking)) {
+            count++;
+            totalAmount += getInvoicePayableAmount(invoiceMap);
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        totalTunggakan = count;
+        totalNominalTunggakan = totalAmount;
+        loadingTunggakanBadge = false;
+      });
+    } catch (e) {
+      debugPrint("ERROR LOAD BADGE TUNGGAKAN:");
+      debugPrint(e.toString());
+
+      if (!mounted) return;
+
+      setState(() {
+        totalTunggakan = 0;
+        totalNominalTunggakan = 0;
+        loadingTunggakanBadge = false;
+      });
+    }
   }
 
   String formatRupiah(int value) {
@@ -229,11 +1164,168 @@ class _HomePageState extends State<HomePage> {
   }
 
   double getRatingValue(Map<String, dynamic> kos) {
-    return double.tryParse(kos['rating_avg']?.toString() ?? "0") ?? 0;
+    return double.tryParse(
+          kos['rating_avg']?.toString() ??
+              kos['average_rating']?.toString() ??
+              kos['avg_rating']?.toString() ??
+              kos['rating']?.toString() ??
+              "0",
+        ) ??
+        0;
   }
 
   int getRatingCount(Map<String, dynamic> kos) {
-    return int.tryParse(kos['rating_count']?.toString() ?? "0") ?? 0;
+    return int.tryParse(
+          kos['rating_count']?.toString() ??
+              kos['total_reviews']?.toString() ??
+              kos['review_count']?.toString() ??
+              "0",
+        ) ??
+        0;
+  }
+
+  int countFacilityValue(dynamic value) {
+    if (value == null) return 0;
+
+    if (value is List) {
+      return value.where((item) {
+        if (item == null) return false;
+
+        if (item is Map) {
+          final name =
+              item['name'] ??
+              item['title'] ??
+              item['facility_name'] ??
+              item['nama'] ??
+              item['label'];
+
+          if (name != null && name.toString().trim().isNotEmpty) {
+            return true;
+          }
+
+          return item.isNotEmpty;
+        }
+
+        final text = item.toString().trim();
+
+        return text.isNotEmpty && text != "null";
+      }).length;
+    }
+
+    if (value is Map) {
+      final nestedData = value['data'];
+
+      if (nestedData is List) {
+        return countFacilityValue(nestedData);
+      }
+
+      final values = value.values.where((item) {
+        if (item == true) return true;
+
+        if (item is String) {
+          final text = item.trim();
+
+          return text.isNotEmpty && text != "null";
+        }
+
+        return false;
+      }).length;
+
+      return values;
+    }
+
+    if (value is String) {
+      final text = value.trim();
+
+      if (text.isEmpty || text == "null") return 0;
+
+      if (text.startsWith("[") || text.startsWith("{")) {
+        try {
+          final decoded = jsonDecode(text);
+          return countFacilityValue(decoded);
+        } catch (_) {}
+      }
+
+      final parts = text
+          .split(RegExp(r'[,;|\n]'))
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty && item != "null")
+          .toList();
+
+      if (parts.isEmpty) return 0;
+
+      return parts.length;
+    }
+
+    return 0;
+  }
+
+  int getFacilityCount(Map<String, dynamic> kos) {
+    final directCount = toInt(
+      kos['facilities_count'] ??
+          kos['facility_count'] ??
+          kos['total_facilities'] ??
+          kos['jumlah_fasilitas'] ??
+          kos['amenities_count'],
+    );
+
+    if (directCount != null && directCount > 0) {
+      return directCount;
+    }
+
+    final property = toMap(kos['property']);
+    final placeProperty = toMap(kos['place_property']);
+    final placePropertyCamel = toMap(kos['placeProperty']);
+    final placeProperties = toMap(kos['place_properties']);
+    final placePropertiesCamel = toMap(kos['placeProperties']);
+
+    final candidates = [
+      kos['facilities'],
+      kos['facility'],
+      kos['fasilitas'],
+      kos['amenities'],
+      kos['features'],
+      kos['property_facilities'],
+      kos['propertyFacilities'],
+      kos['place_facilities'],
+      kos['placeFacilities'],
+      kos['kost_facilities'],
+      kos['kostFacilities'],
+      kos['kos_facilities'],
+      kos['kosFacilities'],
+
+      property?['facilities'],
+      property?['fasilitas'],
+      property?['amenities'],
+
+      placeProperty?['facilities'],
+      placeProperty?['fasilitas'],
+      placeProperty?['amenities'],
+
+      placePropertyCamel?['facilities'],
+      placePropertyCamel?['fasilitas'],
+      placePropertyCamel?['amenities'],
+
+      placeProperties?['facilities'],
+      placeProperties?['fasilitas'],
+      placeProperties?['amenities'],
+
+      placePropertiesCamel?['facilities'],
+      placePropertiesCamel?['fasilitas'],
+      placePropertiesCamel?['amenities'],
+    ];
+
+    int maxCount = 0;
+
+    for (final candidate in candidates) {
+      final count = countFacilityValue(candidate);
+
+      if (count > maxCount) {
+        maxCount = count;
+      }
+    }
+
+    return maxCount;
   }
 
   String? getImageUrlFromValue(dynamic value) {
@@ -293,6 +1385,37 @@ class _HomePageState extends State<HomePage> {
       kosList,
     );
 
+    if (selectedFilter == KosFilter.rekomendasi) {
+      result.sort((a, b) {
+        final ratingA = getRatingValue(a);
+        final ratingB = getRatingValue(b);
+
+        final ratingCompare = ratingB.compareTo(ratingA);
+
+        if (ratingCompare != 0) {
+          return ratingCompare;
+        }
+
+        final countA = getRatingCount(a);
+        final countB = getRatingCount(b);
+
+        final countCompare = countB.compareTo(countA);
+
+        if (countCompare != 0) {
+          return countCompare;
+        }
+
+        final dateA =
+            DateTime.tryParse(a['created_at']?.toString() ?? "") ??
+            DateTime(2000);
+        final dateB =
+            DateTime.tryParse(b['created_at']?.toString() ?? "") ??
+            DateTime(2000);
+
+        return dateB.compareTo(dateA);
+      });
+    }
+
     if (selectedFilter == KosFilter.termurah) {
       result.sort((a, b) {
         return getMainPriceValue(a).compareTo(getMainPriceValue(b));
@@ -314,10 +1437,28 @@ class _HomePageState extends State<HomePage> {
 
     if (selectedFilter == KosFilter.terlengkap) {
       result.sort((a, b) {
+        final facilitiesA = getFacilityCount(a);
+        final facilitiesB = getFacilityCount(b);
+
+        final facilityCompare = facilitiesB.compareTo(facilitiesA);
+
+        if (facilityCompare != 0) {
+          return facilityCompare;
+        }
+
         final imagesA = a['images'] is List ? (a['images'] as List).length : 0;
         final imagesB = b['images'] is List ? (b['images'] as List).length : 0;
 
-        return imagesB.compareTo(imagesA);
+        final imageCompare = imagesB.compareTo(imagesA);
+
+        if (imageCompare != 0) {
+          return imageCompare;
+        }
+
+        final ratingA = getRatingValue(a);
+        final ratingB = getRatingValue(b);
+
+        return ratingB.compareTo(ratingA);
       });
     }
 
@@ -325,8 +1466,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> refreshAllData() async {
-    await loadUser();
-    await loadKosFromApi();
+    await Future.wait([loadUser(), loadKosFromApi(), loadTunggakanBadge()]);
   }
 
   Future<void> openSearchPage() async {
@@ -370,11 +1510,37 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> openFamilyUserPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const FamilyUser()),
+    );
+
+    if (!mounted) return;
+
+    loadTunggakanBadge();
+  }
+
   Future<void> openRiwayatSewaPage() async {
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const RiwayatSewaPage()),
     );
+
+    if (!mounted) return;
+
+    loadTunggakanBadge();
+  }
+
+  Future<void> openTunggakanPage() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const Tunggakan()),
+    );
+
+    if (!mounted) return;
+
+    loadTunggakanBadge();
   }
 
   Future<void> showKosPreviewSheet(Map<String, dynamic> kos) async {
@@ -918,14 +2084,14 @@ class _HomePageState extends State<HomePage> {
                       },
                     ),
                     buildHeaderActionButton(
-                      tooltip: "Scan QR",
-                      icon: Icons.qr_code_scanner_rounded,
+                      tooltip: "Masuk Family",
+                      icon: Icons.key_rounded,
                       onTap: openQrScanPage,
                     ),
                     buildHeaderActionButton(
-                      tooltip: "Notifikasi",
-                      icon: Icons.notifications_none_rounded,
-                      onTap: () => showComingSoon("Notifikasi"),
+                      tooltip: "Family Saya",
+                      icon: Icons.family_restroom_rounded,
+                      onTap: openFamilyUserPage,
                     ),
                   ],
                 ),
@@ -1056,25 +2222,27 @@ class _HomePageState extends State<HomePage> {
       child: GestureDetector(
         onTap: openRiwayatSewaPage,
         child: Container(
-          padding: const EdgeInsets.all(14),
+          height: 138,
+          padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: primaryColor.withOpacity(0.10),
-                blurRadius: 22,
-                offset: const Offset(0, 12),
+                color: primaryColor.withOpacity(0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 9),
               ),
             ],
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 86,
-                height: 86,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   gradient: const LinearGradient(
                     colors: [primaryColor, secondaryColor],
                     begin: Alignment.topLeft,
@@ -1084,39 +2252,254 @@ class _HomePageState extends State<HomePage> {
                 child: const Icon(
                   Icons.receipt_long_rounded,
                   color: Colors.white,
-                  size: 38,
+                  size: 25,
                 ),
               ),
+              const Spacer(),
+              const Text(
+                "Riwayat",
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  color: darkText,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "Status sewa dan pembayaran",
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.black54,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-              const SizedBox(width: 14),
+  Widget buildTunggakanCard() {
+    final hasTunggakan = totalTunggakan > 0;
 
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: GestureDetector(
+        onTap: openTunggakanPage,
+        child: Container(
+          height: 138,
+          padding: const EdgeInsets.all(13),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: hasTunggakan
+                  ? Colors.red.withOpacity(0.20)
+                  : Colors.transparent,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: hasTunggakan
+                    ? Colors.red.withOpacity(0.09)
+                    : primaryColor.withOpacity(0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 9),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(
+                        colors: hasTunggakan
+                            ? [Colors.red, Colors.redAccent]
+                            : [primaryColor, secondaryColor],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Icon(
+                      hasTunggakan
+                          ? Icons.warning_amber_rounded
+                          : Icons.receipt_rounded,
+                      color: Colors.white,
+                      size: 27,
+                    ),
+                  ),
+                  if (hasTunggakan)
+                    Positioned(
+                      right: -7,
+                      top: -7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: Text(
+                          totalTunggakan > 99 ? "99+" : "$totalTunggakan",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      "Tunggakan",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                        color: darkText,
+                      ),
+                    ),
+                  ),
+                  if (loadingTunggakanBadge)
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                loadingTunggakanBadge
+                    ? "Mengecek data..."
+                    : hasTunggakan
+                    ? "${formatRupiah(totalNominalTunggakan)}"
+                    : "Tidak ada tunggakan",
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: hasTunggakan ? Colors.red : Colors.black54,
+                  height: 1.25,
+                  fontWeight: hasTunggakan ? FontWeight.w900 : FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget buildFamilyUserCard() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 950),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 18 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: GestureDetector(
+        onTap: openFamilyUserPage,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: primaryColor.withOpacity(0.08),
+                blurRadius: 18,
+                offset: const Offset(0, 9),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [primaryColor, secondaryColor],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.family_restroom_rounded,
+                  color: Colors.white,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 13),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Riwayat Pemesanan",
+                      "Family Saya",
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 15,
                         color: darkText,
                       ),
                     ),
-
-                    SizedBox(height: 5),
-
+                    SizedBox(height: 4),
                     Text(
-                      "Lihat status sewa, tanggal sewa, pembayaran, dan invoice kos kamu.",
+                      "Lihat family kost yang sedang kamu ikuti",
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.black54,
-                        height: 1.35,
+                        height: 1.3,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-
               Container(
                 width: 34,
                 height: 34,
@@ -1257,6 +2640,8 @@ class _HomePageState extends State<HomePage> {
               price: getKosPrice(kos),
               rating: getRatingValue(kos),
               ratingCount: getRatingCount(kos),
+              facilityCount: getFacilityCount(kos),
+              showFacilityCount: selectedFilter == KosFilter.terlengkap,
               imageBuilder: buildKosImage,
               onTap: () async {
                 await showKosPreviewSheet(Map<String, dynamic>.from(kos));
@@ -1298,9 +2683,17 @@ class _HomePageState extends State<HomePage> {
                 buildHeader(),
                 const SizedBox(height: 22),
                 buildMenuSection(),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(child: buildHistoryCard()),
+                    const SizedBox(width: 12),
+                    Expanded(child: buildTunggakanCard()),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                buildFamilyUserCard(),
                 const SizedBox(height: 24),
-                buildHistoryCard(),
-                const SizedBox(height: 26),
                 Row(
                   children: [
                     Expanded(
@@ -1417,6 +2810,8 @@ class KosCard extends StatelessWidget {
   final String price;
   final double rating;
   final int ratingCount;
+  final int facilityCount;
+  final bool showFacilityCount;
   final Widget Function(Map<String, dynamic>) imageBuilder;
   final VoidCallback onTap;
 
@@ -1429,6 +2824,8 @@ class KosCard extends StatelessWidget {
     required this.price,
     required this.rating,
     required this.ratingCount,
+    required this.facilityCount,
+    required this.showFacilityCount,
     required this.imageBuilder,
     required this.onTap,
   });
@@ -1514,30 +2911,6 @@ class KosCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.94),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.10),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.favorite_border_rounded,
-                          color: primaryColor,
-                          size: 18,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
                 Expanded(
@@ -1590,6 +2963,43 @@ class KosCard extends StatelessWidget {
                             fontWeight: FontWeight.w500,
                           ),
                         ),
+
+                        if (showFacilityCount) ...[
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF2FF),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 13,
+                                  color: primaryColor,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  "$facilityCount fasilitas",
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: primaryColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        const Spacer(),
                         const Spacer(),
                         Container(
                           width: double.infinity,

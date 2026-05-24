@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Owner/LiveChatOwner.dart';
+import 'package:koskaki/screens/Owner/RatingKos.dart';
 import 'package:koskaki/screens/Resident/AjukanSurvey.dart';
 import 'package:koskaki/screens/Resident/PengajuanSewa.dart';
 import 'package:koskaki/service/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DetailKosPage extends StatefulWidget {
   final Map<String, dynamic> kos;
@@ -905,6 +907,102 @@ class _DetailKosPageState extends State<DetailKosPage> {
     );
   }
 
+  void showDetailMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: primaryColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
+  void goToRatingPage() {
+    final d = detail ?? widget.kos;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RatingKos(kost: Map<String, dynamic>.from(d)),
+      ),
+    ).then((_) {
+      getDetail();
+    });
+  }
+
+  Future<void> openAddressInMaps(String address) async {
+    final cleanAddress = address.trim();
+  
+    if (cleanAddress.isEmpty ||
+        cleanAddress == "Belum ditambahkan" ||
+        cleanAddress == "Alamat belum tersedia") {
+      showDetailMessage("Alamat kos belum tersedia.");
+      return;
+    }
+  
+    final encodedAddress = Uri.encodeComponent(cleanAddress);
+  
+    final geoUri = Uri.parse("geo:0,0?q=$encodedAddress");
+    final googleNavigationUri = Uri.parse("google.navigation:q=$encodedAddress");
+    final webUri = Uri.parse(
+      "https://www.google.com/maps/search/?api=1&query=$encodedAddress",
+    );
+  
+    debugPrint("OPEN MAPS ADDRESS:");
+    debugPrint(cleanAddress);
+  
+    debugPrint("OPEN MAPS GEO URI:");
+    debugPrint(geoUri.toString());
+  
+    debugPrint("OPEN MAPS WEB URI:");
+    debugPrint(webUri.toString());
+  
+    try {
+      bool opened = false;
+  
+      try {
+        opened = await launchUrl(
+          geoUri,
+          mode: LaunchMode.externalApplication,
+        );
+      } catch (e) {
+        debugPrint("OPEN GEO MAPS FAILED:");
+        debugPrint(e.toString());
+      }
+  
+      if (!opened) {
+        try {
+          opened = await launchUrl(
+            googleNavigationUri,
+            mode: LaunchMode.externalApplication,
+          );
+        } catch (e) {
+          debugPrint("OPEN GOOGLE NAVIGATION FAILED:");
+          debugPrint(e.toString());
+        }
+      }
+  
+      if (!opened) {
+        opened = await launchUrl(
+          webUri,
+          mode: LaunchMode.externalApplication,
+        );
+      }
+  
+      if (!opened) {
+        showDetailMessage("Tidak bisa membuka Google Maps.");
+      }
+    } catch (e) {
+      debugPrint("OPEN MAPS ERROR:");
+      debugPrint(e.toString());
+  
+      showDetailMessage("Gagal membuka Maps.");
+    }
+  }
+
   void goToAjukanSurvey() {
     final d = detail ?? widget.kos;
 
@@ -928,47 +1026,40 @@ class _DetailKosPageState extends State<DetailKosPage> {
 
   void goToPengajuanSewa() {
     final d = detail ?? widget.kos;
-  
+
     final propertyId = d['id'] ?? widget.kos['id'];
-  
+
     final owner = d['owner'];
-  
+
     final ownerId = owner is Map
         ? owner['id']
         : d['owner_id'] ?? widget.kos['owner_id'];
-  
+
     Navigator.push(
       context,
       MaterialPageRoute(
         settings: RouteSettings(
           arguments: {
             'kos': d,
-  
-            // ID kos / property
+
             'property_id': propertyId,
             'place_property_id': propertyId,
             'place_properties_id': propertyId,
-  
-            // Data utama
+
             'title': d['title'] ?? d['name'],
             'name': d['name'] ?? d['title'],
             'address': d['address'],
             'description': d['description'],
-  
-            // Owner
+
             'owner': d['owner'],
             'owner_id': ownerId,
-            'owner_name': owner is Map
-                ? owner['name']
-                : d['owner_name'],
-  
-            // Harga
+            'owner_name': owner is Map ? owner['name'] : d['owner_name'],
+
             'price_perNight': d['price_perNight'] ?? d['price_per_night'],
             'price_perWeek': d['price_perWeek'] ?? d['price_per_week'],
             'price_perMonth': d['price_perMonth'] ?? d['price_per_month'],
             'price_perYear': d['price_perYear'] ?? d['price_per_year'],
-  
-            // Gambar
+
             'main_image': d['main_image'],
             'images': d['images'],
           },
@@ -1137,11 +1228,8 @@ class _DetailKosPageState extends State<DetailKosPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     buildImageHeader(title: title, status: status),
-
                     const SizedBox(height: 20),
-
                     priceSection(),
-
                     infoSummarySection(
                       title: title,
                       cityName: cityName,
@@ -1151,29 +1239,23 @@ class _DetailKosPageState extends State<DetailKosPage> {
                       ratingAvg: ratingAvg,
                       ratingCount: ratingCount,
                     ),
-
                     nearbyPlacesSection(items: nearbyPlaces),
-
                     descriptionSection(description),
-
                     facilitySection(
                       title: "Fasilitas Kos",
                       icon: Icons.maps_home_work_outlined,
                       items: kostFacilities,
                     ),
-
                     facilitySection(
                       title: "Fasilitas Kamar",
                       icon: Icons.bed_outlined,
                       items: roomFacilities,
                     ),
-
                     policySection(
                       title: "Aturan Kos",
                       icon: Icons.rule_outlined,
                       policies: kostRules,
                     ),
-
                     policySection(
                       title: "Aturan Kamar",
                       icon: Icons.meeting_room_outlined,
@@ -1475,6 +1557,7 @@ class _DetailKosPageState extends State<DetailKosPage> {
                 icon: Icons.star_rounded,
                 title: "Rating",
                 value: ratingText,
+                onTap: goToRatingPage,
               ),
             ),
             const SizedBox(width: 10),
@@ -1492,6 +1575,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
           icon: Icons.location_on_outlined,
           title: "Alamat Lengkap",
           value: fullAddress,
+          onTap: () {
+            openAddressInMaps(fullAddress);
+          },
         ),
       ],
     );
@@ -1501,8 +1587,9 @@ class _DetailKosPageState extends State<DetailKosPage> {
     required IconData icon,
     required String title,
     required String value,
+    VoidCallback? onTap,
   }) {
-    return Container(
+    final card = Container(
       height: 94,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1512,7 +1599,18 @@ class _DetailKosPageState extends State<DetailKosPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: primaryColor, size: 21),
+          Row(
+            children: [
+              Icon(icon, color: primaryColor, size: 21),
+              const Spacer(),
+              if (onTap != null)
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: primaryColor.withOpacity(0.65),
+                  size: 13,
+                ),
+            ],
+          ),
           const Spacer(),
           Text(
             title,
@@ -1538,14 +1636,29 @@ class _DetailKosPageState extends State<DetailKosPage> {
         ],
       ),
     );
+
+    if (onTap == null) {
+      return card;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: card,
+      ),
+    );
   }
 
   Widget fullInfoCard({
     required IconData icon,
     required String title,
     required String value,
+    VoidCallback? onTap,
   }) {
-    return Container(
+    final card = Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1561,13 +1674,25 @@ class _DetailKosPageState extends State<DetailKosPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    if (onTap != null)
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        color: primaryColor.withOpacity(0.65),
+                        size: 16,
+                      ),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -1582,6 +1707,20 @@ class _DetailKosPageState extends State<DetailKosPage> {
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) {
+      return card;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: card,
       ),
     );
   }
