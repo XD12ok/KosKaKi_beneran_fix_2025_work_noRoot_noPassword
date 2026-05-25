@@ -1,11 +1,10 @@
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'dart:io';
-
 import 'package:dropdown_search/dropdown_search.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:koskaki/service/api_service.dart';
 
@@ -441,36 +440,59 @@ class _AddKostPageState extends State<AddKostPage> {
     required String propertyId,
     required String token,
   }) async {
-    final place = selectedNearbyPlace;
-    final distance = cleanDistance(nearbyDistanceController.text.trim());
+    try {
+      if (selectedNearbyPlace == null) {
+        debugPrint("UPLOAD NEARBY PLACE DILEWATI: lokasi belum dipilih");
+        return;
+      }
 
-    if (place == null || distance.isEmpty) {
-      return;
+      final placeId = selectedNearbyPlace!['id'];
+
+      final distanceText = nearbyDistanceController.text.trim().replaceAll(
+        ',',
+        '.',
+      );
+
+      if (placeId == null || distanceText.isEmpty) {
+        debugPrint("UPLOAD NEARBY PLACE DILEWATI: placeId / distance kosong");
+        return;
+      }
+
+      final distance = double.tryParse(distanceText);
+
+      if (distance == null) {
+        debugPrint("UPLOAD NEARBY PLACE DILEWATI: distance bukan angka");
+        return;
+      }
+
+      final body = {
+        "places": [
+          {"place_id": placeId, "distance": distance},
+        ],
+      };
+
+      debugPrint("UPLOAD NEARBY PLACE BODY:");
+      debugPrint(body.toString());
+
+      final response = await http.post(
+        Uri.parse("${ApiService.baseUrl}/properties/$propertyId/nearby-places"),
+        headers: {
+          "Authorization": "Bearer $token",
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode(body),
+      );
+
+      debugPrint("UPLOAD NEARBY PLACE STATUS:");
+      debugPrint(response.statusCode.toString());
+
+      debugPrint("UPLOAD NEARBY PLACE RESPONSE:");
+      debugPrint(response.body);
+    } catch (e) {
+      debugPrint("UPLOAD NEARBY PLACE ERROR:");
+      debugPrint(e.toString());
     }
-
-    final String placeId = place['id'].toString();
-
-    final response = await http.post(
-      Uri.parse("${ApiService.baseUrl}/properties/$propertyId/nearby-places"),
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-      body: {
-        'place_id': placeId,
-        'placeId': placeId,
-        'nearby_place_id': placeId,
-        'distance': distance,
-        'distance_km': distance,
-        'distance_unit': 'km',
-      },
-    );
-
-    print("UPLOAD NEARBY PLACE:");
-    print({'place_id': placeId, 'distance': distance, 'distance_unit': 'km'});
-
-    print("UPLOAD NEARBY PLACE STATUS:");
-    print(response.statusCode);
-
-    print("UPLOAD NEARBY PLACE BODY:");
-    print(response.body);
   }
 
   Future<void> tambahKost() async {
@@ -655,6 +677,38 @@ class _AddKostPageState extends State<AddKostPage> {
         isLoading = false;
       });
     }
+  }
+
+  Future<void> addNearbyPlaces({
+    required String propertyId,
+    required String token,
+  }) async {
+    if (selectedNearbyPlace == null) return;
+
+    final placeId = selectedNearbyPlace!['id'];
+    final distanceText = nearbyDistanceController.text.trim();
+
+    if (placeId == null || distanceText.isEmpty) return;
+
+    final body = {
+      "places": [
+        {"place_id": placeId, "distance": distanceText.replaceAll(',', '.')},
+      ],
+    };
+
+    final response = await http.post(
+      Uri.parse("${ApiService.baseUrl}/properties/$propertyId/nearby-places"),
+      headers: {
+        "Authorization": "Bearer $token",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+      body: jsonEncode(body),
+    );
+
+    debugPrint("ADD NEARBY BODY: $body");
+    debugPrint("ADD NEARBY STATUS: ${response.statusCode}");
+    debugPrint("ADD NEARBY RESPONSE: ${response.body}");
   }
 
   void showMessage(String msg, {bool success = false}) {

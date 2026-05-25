@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:koskaki/screens/Owner/LiveChatOwner.dart';
+import 'package:koskaki/screens/Resident/RiwayatSewa.dart';
 import 'package:koskaki/service/api_service.dart';
 
 class Payment extends StatefulWidget {
@@ -53,6 +54,9 @@ class _PaymentState extends State<Payment> {
   String startDate = "";
   String endDate = "";
 
+  String senderName = "";
+  String notes = "";
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -85,9 +89,12 @@ class _PaymentState extends State<Payment> {
 
       rentalBookingId = toInt(
         args['rental_booking_id'] ??
-            args['booking_id'] ??
-            rentalBooking['id'] ??
-            rentalBooking['rental_booking_id'],
+            args['rentalBookingId'] ??
+            args['rental_id'] ??
+            rentalBooking['rental_booking_id'] ??
+            rentalBooking['rentalBookingId'] ??
+            rentalBooking['rental_id'] ??
+            rentalBooking['id'],
       );
 
       propertyId = toInt(
@@ -173,6 +180,14 @@ class _PaymentState extends State<Payment> {
                 rentalBooking['grand_total'],
           ) ??
           0;
+
+      senderName =
+          args['sender_name']?.toString() ??
+          rentalBooking['sender_name']?.toString() ??
+          "";
+
+      notes =
+          args['notes']?.toString() ?? rentalBooking['notes']?.toString() ?? "";
     }
 
     if (widget.rentalBooking != null) {
@@ -180,9 +195,30 @@ class _PaymentState extends State<Payment> {
     }
 
     rentalBookingId ??= widget.rentalBookingId;
+
     rentalBookingId ??= toInt(
-      rentalBooking['id'] ?? rentalBooking['rental_booking_id'],
+      rentalBooking['rental_booking_id'] ??
+          rentalBooking['rentalBookingId'] ??
+          rentalBooking['rental_id'] ??
+          rentalBooking['id'],
     );
+
+    propertyId ??= toInt(
+      rentalBooking['place_properties_id'] ??
+          rentalBooking['place_property_id'] ??
+          rentalBooking['property_id'] ??
+          kos['id'],
+    );
+
+    ownerId ??= toInt(rentalBooking['owner_id'] ?? kos['owner_id']);
+
+    if (senderName.trim().isEmpty) {
+      senderName = rentalBooking['sender_name']?.toString() ?? "";
+    }
+
+    if (notes.trim().isEmpty) {
+      notes = rentalBooking['notes']?.toString() ?? "";
+    }
 
     if (title.trim().isEmpty) {
       title = "Kos";
@@ -191,20 +227,95 @@ class _PaymentState extends State<Payment> {
     if (duration <= 0) {
       duration = 1;
     }
+
+    if (endDate.trim().isEmpty || endDate == "null") {
+      endDate = startDate;
+    }
+
+    final safeAmount = getClaimedAmount();
+
+    if (totalPrice <= 0 && safeAmount > 0) {
+      totalPrice = safeAmount;
+    }
+
+    debugPrint("PAYMENT ARGUMENT RENTAL BOOKING ID:");
+    debugPrint(rentalBookingId.toString());
+
+    debugPrint("PAYMENT START DATE:");
+    debugPrint(startDate);
+
+    debugPrint("PAYMENT END DATE:");
+    debugPrint(endDate);
+
+    debugPrint("PAYMENT TOTAL PRICE:");
+    debugPrint(totalPrice.toString());
+
+    debugPrint("PAYMENT SENDER NAME:");
+    debugPrint(senderName);
+
+    debugPrint("PAYMENT NOTES:");
+    debugPrint(notes);
   }
 
   int? toInt(dynamic value) {
     if (value == null) return null;
 
-    final text = value.toString().trim();
+    String text = value.toString().trim();
 
     if (text.isEmpty || text == "null") return null;
+
+    text = text.replaceAll("Rp", "").trim();
+
+    if (RegExp(r',\d{1,2}$').hasMatch(text)) {
+      text = text.split(',').first;
+    }
+
+    if (RegExp(r'\.\d{1,2}$').hasMatch(text)) {
+      text = text.split('.').first;
+    }
 
     final cleaned = text.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (cleaned.isEmpty) return null;
 
     return int.tryParse(cleaned);
+  }
+
+  int getClaimedAmount() {
+    final invoice = rentalBooking['invoice'];
+    final invoices = rentalBooking['invoices'];
+
+    final candidates = <dynamic>[
+      if (invoice is Map) invoice['remaining_amount'],
+      if (invoice is Map) invoice['total_amount'],
+      if (invoice is Map) invoice['amount'],
+
+      if (invoices is List && invoices.isNotEmpty && invoices.first is Map)
+        invoices.first['remaining_amount'],
+      if (invoices is List && invoices.isNotEmpty && invoices.first is Map)
+        invoices.first['total_amount'],
+      if (invoices is List && invoices.isNotEmpty && invoices.first is Map)
+        invoices.first['amount'],
+
+      rentalBooking['remaining_amount'],
+      rentalBooking['invoice_remaining_amount'],
+      rentalBooking['total_amount'],
+      rentalBooking['total_price'],
+      rentalBooking['amount'],
+      rentalBooking['grand_total'],
+
+      totalPrice,
+    ];
+
+    for (final item in candidates) {
+      final value = toInt(item);
+
+      if (value != null && value > 0) {
+        return value;
+      }
+    }
+
+    return 0;
   }
 
   String getRentalTitle(String type) {
@@ -279,7 +390,21 @@ class _PaymentState extends State<Payment> {
   String formatRupiah(dynamic value) {
     if (value == null) return "0";
 
-    final number = value.toString().replaceAll(RegExp(r'[^0-9]'), '');
+    String raw = value.toString().trim();
+
+    if (raw.isEmpty || raw == "null") return "0";
+
+    raw = raw.replaceAll("Rp", "").trim();
+
+    if (RegExp(r',\d{1,2}$').hasMatch(raw)) {
+      raw = raw.split(',').first;
+    }
+
+    if (RegExp(r'\.\d{1,2}$').hasMatch(raw)) {
+      raw = raw.split('.').first;
+    }
+
+    final number = raw.replaceAll(RegExp(r'[^0-9]'), '');
 
     if (number.isEmpty) return "0";
 
@@ -378,7 +503,9 @@ class _PaymentState extends State<Payment> {
   Future<void> pickImageFromGallery() async {
     final result = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 82,
+      imageQuality: 65,
+      maxWidth: 1280,
+      maxHeight: 1280,
     );
 
     if (result == null) return;
@@ -391,7 +518,9 @@ class _PaymentState extends State<Payment> {
   Future<void> pickImageFromCamera() async {
     final result = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 82,
+      imageQuality: 65,
+      maxWidth: 1280,
+      maxHeight: 1280,
     );
 
     if (result == null) return;
@@ -542,6 +671,23 @@ class _PaymentState extends State<Payment> {
       return false;
     }
 
+    final claimedAmount = getClaimedAmount();
+
+    if (claimedAmount <= 0) {
+      showMessage("Nominal pembayaran tidak ditemukan");
+      return false;
+    }
+
+    if (startDate.trim().isEmpty || startDate == "null") {
+      showMessage("Tanggal mulai sewa tidak ditemukan");
+      return false;
+    }
+
+    if (endDate.trim().isEmpty || endDate == "null") {
+      showMessage("Tanggal selesai sewa tidak ditemukan");
+      return false;
+    }
+
     return true;
   }
 
@@ -584,6 +730,31 @@ class _PaymentState extends State<Payment> {
           } else {
             message = firstError.toString();
           }
+        }
+
+        if (message.contains("period_start")) {
+          return "Upload gagal karena backend belum memakai tanggal mulai sewa saat membuat invoice";
+        }
+
+        if (message.contains("period_end")) {
+          return "Upload gagal karena backend belum memakai tanggal selesai sewa saat membuat invoice";
+        }
+
+        if (message.contains("No query results for model") &&
+            message.contains("Invoice")) {
+          return "Invoice untuk booking ini belum dibuat oleh backend";
+        }
+
+        if (message.contains("Claimed amount exceeds remaining invoice")) {
+          return "Nominal pembayaran melebihi sisa tagihan invoice";
+        }
+
+        if (message.contains("Invoice already paid")) {
+          return "Invoice ini sudah lunas";
+        }
+
+        if (message.contains("payment_proof")) {
+          return "Bukti pembayaran wajib berupa gambar dan maksimal 2MB";
         }
 
         return message;
@@ -690,12 +861,16 @@ class _PaymentState extends State<Payment> {
       throw Exception("Bukti pembayaran belum dipilih");
     }
 
-    final request = http.MultipartRequest(
-      "POST",
-      Uri.parse(
-        "${ApiService.baseUrl}/rental-bookings/$rentalBookingId/upload-payment",
-      ),
-    );
+    final claimedAmount = getClaimedAmount();
+
+    if (claimedAmount <= 0) {
+      throw Exception("Nominal pembayaran tidak ditemukan");
+    }
+
+    final uploadUrl =
+        "${ApiService.baseUrl}/rental-bookings/$rentalBookingId/upload-payment";
+
+    final request = http.MultipartRequest("POST", Uri.parse(uploadUrl));
 
     request.headers.addAll({
       "Authorization": "Bearer $token",
@@ -703,38 +878,72 @@ class _PaymentState extends State<Payment> {
     });
 
     request.fields.addAll({
-      // WAJIB SESUAI BACKEND
-      "claimed_amount": totalPrice.toString(),
+      "claimed_amount": claimedAmount.toString(),
 
-      // Opsional sesuai controller
-      "sender_name": "",
+      "sender_name": senderName.trim(),
       "payment_method": "transfer",
-      "notes": "",
+      "notes": notes.trim(),
 
-      // Cadangan, tidak masalah kalau backend mengabaikan
-      "amount": totalPrice.toString(),
-      "total_price": totalPrice.toString(),
-      "payment_amount": totalPrice.toString(),
+      "property_name": title,
+      "place_property_name": title,
+      "nama_kos": title,
+      "nama_kost": title,
+      "kos_name": title,
+      "kost_name": title,
+      "property_title": title,
+      "title": title,
+
+      "property_address": address,
+      "place_property_address": address,
+      "address": address,
+      "alamat": address,
+      "location": address,
+      "lokasi": address,
+
+      if (propertyId != null && propertyId! > 0)
+        "property_id": propertyId.toString(),
+
+      if (propertyId != null && propertyId! > 0)
+        "place_property_id": propertyId.toString(),
+
+      if (propertyId != null && propertyId! > 0)
+        "place_properties_id": propertyId.toString(),
+
+      "period_start": startDate,
+      "period_end": endDate,
+      "start_date": startDate,
+      "end_date": endDate,
+      "check_in": startDate,
+      "check_out": endDate,
+      "duration": duration.toString(),
+      "duration_type": rentalType,
+      "rental_type": rentalType,
+      "type": rentalType,
+      "total_price": claimedAmount.toString(),
+      "amount": claimedAmount.toString(),
     });
 
     request.files.add(
-      await http.MultipartFile.fromPath(
-        // WAJIB SESUAI BACKEND
-        "payment_proof",
-        proofFile!.path,
-      ),
+      await http.MultipartFile.fromPath("payment_proof", proofFile!.path),
     );
 
     debugPrint("UPLOAD PAYMENT URL:");
-    debugPrint(
-      "${ApiService.baseUrl}/rental-bookings/$rentalBookingId/upload-payment",
-    );
+    debugPrint(uploadUrl);
 
     debugPrint("UPLOAD PAYMENT FIELDS:");
     debugPrint(request.fields.toString());
 
+    debugPrint("UPLOAD PAYMENT PROPERTY NAME:");
+    debugPrint(title);
+
+    debugPrint("UPLOAD PAYMENT PROPERTY ADDRESS:");
+    debugPrint(address);
+
     debugPrint("UPLOAD PAYMENT FILE FIELD:");
     debugPrint("payment_proof");
+
+    debugPrint("UPLOAD PAYMENT FILE PATH:");
+    debugPrint(proofFile!.path);
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
@@ -777,6 +986,8 @@ class _PaymentState extends State<Payment> {
       throw Exception("Gagal membuat conversation untuk notifikasi owner");
     }
 
+    final claimedAmount = getClaimedAmount();
+
     final payload = {
       "card_type": "rental_payment",
       "rental_booking_id": rentalBookingId,
@@ -794,8 +1005,15 @@ class _PaymentState extends State<Payment> {
       "duration_label": durationLabel,
       "start_date": startDate,
       "end_date": endDate,
+      "period_start": startDate,
+      "period_end": endDate,
       "unit_price": unitPrice,
-      "total_price": totalPrice,
+      "total_price": claimedAmount,
+      "claimed_amount": claimedAmount,
+
+      "sender_name": senderName.trim(),
+      "notes": notes.trim(),
+
       "status": "pending",
       "payment_status": "pending",
       "created_by": "resident",
@@ -817,14 +1035,12 @@ class _PaymentState extends State<Payment> {
 
     if (!mounted) return;
 
-    showMessage("Bukti pembayaran terkirim ke pemilik", success: true);
+    showMessage("Bukti pembayaran berhasil dikirim", success: true);
 
-    Navigator.pushReplacement(
+    Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (_) =>
-            Livechatowner(username: ownerName, conversationId: conversationId),
-      ),
+      MaterialPageRoute(builder: (_) => RiwayatSewaPage()),
+      (route) => false,
     );
   }
 
@@ -840,6 +1056,15 @@ class _PaymentState extends State<Payment> {
 
       final rentalPaymentId = parsePaymentId(paymentData);
       final proofUrl = parseProofUrl(paymentData);
+
+      debugPrint("PARSED PAYMENT DATA:");
+      debugPrint(paymentData.toString());
+
+      debugPrint("PARSED RENTAL PAYMENT ID:");
+      debugPrint(rentalPaymentId.toString());
+
+      debugPrint("PARSED PROOF URL:");
+      debugPrint(proofUrl);
 
       if (rentalPaymentId <= 0) {
         throw Exception(
@@ -1080,6 +1305,8 @@ class _PaymentState extends State<Payment> {
   }
 
   Widget totalBox() {
+    final claimedAmount = getClaimedAmount();
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
@@ -1116,7 +1343,7 @@ class _PaymentState extends State<Payment> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  "Rp ${formatRupiah(totalPrice)}",
+                  "Rp ${formatRupiah(claimedAmount)}",
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 22,
@@ -1402,6 +1629,16 @@ class _PaymentState extends State<Payment> {
                     icon: Icons.event_available_rounded,
                     title: "Tanggal Selesai",
                     value: readableDate(endDate),
+                  ),
+                  summaryItem(
+                    icon: Icons.person_outline_rounded,
+                    title: "Nama Pengirim",
+                    value: senderName.trim().isEmpty ? "-" : senderName.trim(),
+                  ),
+                  summaryItem(
+                    icon: Icons.notes_rounded,
+                    title: "Catatan",
+                    value: notes.trim().isEmpty ? "-" : notes.trim(),
                   ),
                   const SizedBox(height: 6),
                   totalBox(),

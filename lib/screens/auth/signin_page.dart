@@ -5,8 +5,10 @@ import 'package:koskaki/widgets/kk_button.dart';
 import 'package:koskaki/widgets/kk_logo.dart';
 import 'package:koskaki/widgets/kk_textfield.dart';
 import 'package:koskaki/service/auth_service.dart';
-import 'signup_page.dart';
 import 'package:koskaki/service/api_service.dart';
+
+import 'signup_page.dart';
+import 'forgotpass.dart';
 
 class LoginPage extends StatefulWidget {
   final String role;
@@ -292,6 +294,20 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  void goToSignUp() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => SignUpPage(role: widget.role)),
+    );
+  }
+
+  void goToForgotPassword() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ForgotPassPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -303,6 +319,7 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const KKLogo(),
+
               const SizedBox(height: 20),
 
               const Text(
@@ -329,29 +346,46 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 22),
 
-              const SizedBox(height: 10),
-
               isLoading
                   ? const Center(child: CircularProgressIndicator())
                   : KKButton(text: "Masuk", onPressed: handleLogin),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 34),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Belum punya akun? "),
+                  const Text(
+                    "Belum punya akun? ",
+                    style: TextStyle(fontSize: 14.5, color: Color(0xFF6B7280)),
+                  ),
                   GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => SignUpPage(role: widget.role),
-                        ),
-                      );
-                    },
+                    onTap: goToSignUp,
                     child: const Text(
                       "Daftar",
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    "Lupa password? ",
+                    style: TextStyle(fontSize: 14.5, color: Color(0xFF6B7280)),
+                  ),
+                  GestureDetector(
+                    onTap: goToForgotPassword,
+                    child: const Text(
+                      "Lupa Password",
                       style: TextStyle(
                         color: Colors.blue,
                         fontWeight: FontWeight.w600,
