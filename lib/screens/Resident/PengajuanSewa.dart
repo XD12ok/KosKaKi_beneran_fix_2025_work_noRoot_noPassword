@@ -1100,6 +1100,11 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
       return false;
     }
 
+    if (senderNameController.text.trim().isEmpty) {
+      showMessage("Nama pengirim wajib diisi");
+      return false;
+    }
+
     return true;
   }
 
@@ -1921,8 +1926,8 @@ class _PengajuanSewaState extends State<PengajuanSewa> {
       children: [
         inputField(
           controller: senderNameController,
-          label: "Nama Pengirim",
-          hint: "Opsional, contoh: Rahes",
+          label: "Nama Pengirim *",
+          hint: "Wajib diisi, contoh: Rahes",
           icon: Icons.person_rounded,
         ),
         inputField(
