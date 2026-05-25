@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:koskaki/service/api_service.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class AddKostPage extends StatefulWidget {
   const AddKostPage({super.key});
@@ -42,6 +44,8 @@ class _AddKostPageState extends State<AddKostPage> {
 
   int? selectedCityId;
   Map<String, dynamic>? selectedNearbyPlace;
+  double? selectedLatitude;
+  double? selectedLongitude;
 
   List<String> selectedKostFacilities = [];
   List<String> selectedRoomFacilities = [];
@@ -568,6 +572,8 @@ class _AddKostPageState extends State<AddKostPage> {
         'title': titleController.text,
         'description': descController.text,
         'address': addressController.text,
+        'latitude': selectedLatitude?.toString() ?? '',
+        'longitude': selectedLongitude?.toString() ?? '',
         'city_id': selectedCityId.toString(),
         'max_people': maxPeopleController.text,
         'status': 'active',
@@ -1624,6 +1630,154 @@ class _AddKostPageState extends State<AddKostPage> {
       ],
     );
   }
+  Widget locationPickerSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F6FA),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+      Row(
+      children: [
+      Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: softGreen,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(
+        Icons.map_outlined,
+        color: primaryColor,
+        size: 18,
+      ),
+    ),
+    const SizedBox(width: 10),
+    Expanded(
+    child: Text(
+    "Lokasi Kost",
+    style: TextStyle(
+    color: primaryColor,
+    fontSize: 14,
+    fontWeight: FontWeight.bold,
+    ),
+    ),
+    ),
+    ],
+    ),
+    const SizedBox(height: 14),
+    ClipRRect(
+    borderRadius: BorderRadius.circular(18),
+    child: SizedBox(
+    height: 250,
+    child: FlutterMap(
+    options: MapOptions(
+    initialCenter: LatLng(
+    selectedLatitude ?? -6.200000,
+    selectedLongitude ?? 106.816666,
+    ),
+    initialZoom: 15,
+    onTap: (tapPosition, point) {
+    setState(() {
+    selectedLatitude = point.latitude;
+    selectedLongitude = point.longitude;
+    });
+    },
+    ),
+    children: [
+    TileLayer(
+    urlTemplate:
+    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    userAgentPackageName: 'com.example.koskaki',
+    ),
+    if (selectedLatitude != null &&
+    selectedLongitude != null)
+    MarkerLayer(
+    markers: [
+    Marker(
+    point: LatLng(
+    selectedLatitude!,
+    selectedLongitude!,
+    ),
+    width: 50,
+    height: 50,
+    child: Icon(
+    Icons.location_pin,
+    color: Colors.red,
+    size: 42,
+    ),
+    ),
+    ],
+    ),
+    ],
+    ),
+    ),
+    ),
+    const SizedBox(height: 12),
+    Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(14),
+    border: Border.all(color: Colors.grey.shade200),
+    ),
+    child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+    Text(
+    "Latitude",
+    style: TextStyle(
+    color: primaryColor,
+    fontWeight: FontWeight.bold,
+    fontSize: 12,
+    ),
+    ),
+    const SizedBox(height: 4),
+    Text(
+    selectedLatitude?.toString() ?? "-",
+    style: TextStyle(
+    color: Colors.grey.shade700,
+    fontSize: 13,
+    ),
+    ),
+    const SizedBox(height: 10),
+    Text(
+    "Longitude",
+    style: TextStyle(
+    color: primaryColor,
+    fontWeight: FontWeight.bold,
+    fontSize: 12,
+    ),
+    ),
+    const SizedBox(height: 4),
+    Text(
+    selectedLongitude?.toString() ?? "-",
+      style: TextStyle(
+        color: Colors.grey.shade700,
+        fontSize: 13,
+      ),
+    ),
+    ],
+    ),
+    ),
+            const SizedBox(height: 10),
+            Text(
+              "Tekan map untuk memilih lokasi kost",
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1674,6 +1828,9 @@ class _AddKostPageState extends State<AddKostPage> {
                     maxLines: 3,
                     hint: "Masukkan alamat lengkap kost...",
                   ),
+                  const SizedBox(height: 14),
+                  locationPickerSection(),
+                  const SizedBox(height: 14),
 
                   Text(
                     "Pilih Kota",
