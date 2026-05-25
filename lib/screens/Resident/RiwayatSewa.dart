@@ -1799,246 +1799,307 @@ class _RiwayatSewaState extends State<RiwayatSewa> {
     final amountController = TextEditingController(
       text: getInvoicePayableAmount(invoice).toString(),
     );
-
+  
     final senderNameController = TextEditingController();
     final notesController = TextEditingController();
-
+  
     File? selectedProof;
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            Future<void> pickProof() async {
-              final result = await imagePicker.pickImage(
-                source: ImageSource.gallery,
-                imageQuality: 70,
-                maxWidth: 1280,
-                maxHeight: 1280,
-              );
-
-              if (result == null) return;
-
-              setSheetState(() {
-                selectedProof = File(result.path);
-              });
-            }
-
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-              ),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF7F8FF),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+    String? sheetError;
+  
+    try {
+      final payload = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
+        builder: (modalContext) {
+          return StatefulBuilder(
+            builder: (modalContext, setSheetState) {
+              Future<void> pickProof() async {
+                final result = await imagePicker.pickImage(
+                  source: ImageSource.gallery,
+                  imageQuality: 70,
+                  maxWidth: 1280,
+                  maxHeight: 1280,
+                );
+  
+                if (result == null) return;
+                if (!modalContext.mounted) return;
+  
+                setSheetState(() {
+                  selectedProof = File(result.path);
+                  sheetError = null;
+                });
+              }
+  
+              void submitPayment() {
+                final proof = selectedProof;
+                final amountText = amountController.text.trim();
+                final senderText = senderNameController.text.trim();
+                final notesText = notesController.text.trim();
+  
+                if (proof == null) {
+                  setSheetState(() {
+                    sheetError = "Pilih bukti pembayaran dulu.";
+                  });
+                  return;
+                }
+  
+                if (amountText.isEmpty ||
+                    cleanAmountForBackend(amountText).isEmpty ||
+                    (int.tryParse(cleanAmountForBackend(amountText)) ?? 0) <= 0) {
+                  setSheetState(() {
+                    sheetError = "Nominal pembayaran tidak valid.";
+                  });
+                  return;
+                }
+  
+                if (senderText.isEmpty) {
+                  setSheetState(() {
+                    sheetError = "Nama pengirim wajib diisi.";
+                  });
+                  return;
+                }
+  
+                FocusManager.instance.primaryFocus?.unfocus();
+  
+                final result = <String, dynamic>{
+                  "amount": amountText,
+                  "sender": senderText,
+                  "notes": notesText,
+                  "proof": proof,
+                };
+  
+                Navigator.of(modalContext).pop(result);
+              }
+  
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(modalContext).viewInsets.bottom,
                 ),
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 54,
-                          height: 6,
-                          margin: const EdgeInsets.only(bottom: 18),
-                          decoration: BoxDecoration(
-                            color: Colors.black12,
-                            borderRadius: BorderRadius.circular(99),
-                          ),
-                        ),
-                      ),
-                      const Text(
-                        "Bayar Invoice",
-                        style: TextStyle(
-                          color: darkText,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        getPropertyName(item),
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      buildDetailInfo(
-                        icon: Icons.receipt_long_rounded,
-                        title: "Invoice",
-                        value:
-                            "${formatDate(invoice["period_start"])} - ${formatDate(invoice["period_end"])}",
-                      ),
-                      buildDetailInfo(
-                        icon: Icons.payments_rounded,
-                        title: "Sisa Tagihan",
-                        value: formatRupiah(getInvoicePayableAmount(invoice)),
-                      ),
-                      TextField(
-                        controller: amountController,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: "Nominal Pembayaran",
-                          prefixText: "Rp ",
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: senderNameController,
-                        decoration: InputDecoration(
-                          labelText: "Nama Pengirim",
-                          hintText: "Contoh: Rahes",
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: notesController,
-                        maxLines: 3,
-                        decoration: InputDecoration(
-                          labelText: "Catatan",
-                          hintText: "Contoh: Pembayaran invoice bulan ini",
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(18),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      GestureDetector(
-                        onTap: pickProof,
-                        child: Container(
-                          width: double.infinity,
-                          height: selectedProof == null ? 130 : 210,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: selectedProof == null
-                                  ? Colors.black12
-                                  : primaryColor.withOpacity(0.35),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF7F8FF),
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(32),
+                    ),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 54,
+                            height: 6,
+                            margin: const EdgeInsets.only(bottom: 18),
+                            decoration: BoxDecoration(
+                              color: Colors.black12,
+                              borderRadius: BorderRadius.circular(99),
                             ),
                           ),
-                          child: selectedProof == null
-                              ? const Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.upload_file_rounded,
-                                      color: primaryColor,
-                                      size: 38,
-                                    ),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      "Pilih Bukti Pembayaran",
-                                      style: TextStyle(
-                                        color: darkText,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      "Tap untuk ambil dari galeri",
-                                      style: TextStyle(
-                                        color: Colors.black45,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                              : ClipRRect(
-                                  borderRadius: BorderRadius.circular(22),
-                                  child: Image.file(
-                                    selectedProof!,
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
                         ),
-                      ),
-                      const SizedBox(height: 18),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: ElevatedButton.icon(
-                          onPressed: uploadingInvoicePayment
-                              ? null
-                              : () async {
-                                  if (selectedProof == null) {
-                                    showMessage("Pilih bukti pembayaran dulu.");
-                                    return;
-                                  }
-
-                                  Navigator.pop(context);
-
-                                  await uploadInvoicePayment(
-                                    invoice: invoice,
-                                    claimedAmount: amountController.text,
-                                    senderName: senderNameController.text,
-                                    notes: notesController.text,
-                                    proofFile: selectedProof!,
-                                  );
-                                },
-                          icon: uploadingInvoicePayment
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.send_rounded),
-                          label: Text(
-                            uploadingInvoicePayment
-                                ? "Mengirim..."
-                                : "Kirim Pembayaran",
-                            style: const TextStyle(fontWeight: FontWeight.w900),
+                        const Text(
+                          "Bayar Invoice",
+                          style: TextStyle(
+                            color: darkText,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          getPropertyName(item),
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        buildDetailInfo(
+                          icon: Icons.receipt_long_rounded,
+                          title: "Invoice",
+                          value:
+                              "${formatDate(invoice["period_start"])} - ${formatDate(invoice["period_end"])}",
+                        ),
+                        buildDetailInfo(
+                          icon: Icons.payments_rounded,
+                          title: "Sisa Tagihan",
+                          value: formatRupiah(getInvoicePayableAmount(invoice)),
+                        ),
+                        TextField(
+                          controller: amountController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: InputDecoration(
+                            labelText: "Nominal Pembayaran",
+                            prefixText: "Rp ",
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide.none,
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: senderNameController,
+                          decoration: InputDecoration(
+                            labelText: "Nama Pengirim",
+                            hintText: "Contoh: Rahes",
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: notesController,
+                          maxLines: 3,
+                          decoration: InputDecoration(
+                            labelText: "Catatan",
+                            hintText: "Contoh: Pembayaran invoice bulan ini",
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(18),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        GestureDetector(
+                          onTap: pickProof,
+                          child: Container(
+                            width: double.infinity,
+                            height: selectedProof == null ? 130 : 210,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(
+                                color: selectedProof == null
+                                    ? Colors.black12
+                                    : primaryColor.withOpacity(0.35),
+                              ),
+                            ),
+                            child: selectedProof == null
+                                ? const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.upload_file_rounded,
+                                        color: primaryColor,
+                                        size: 38,
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        "Pilih Bukti Pembayaran",
+                                        style: TextStyle(
+                                          color: darkText,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        "Tap untuk ambil dari galeri",
+                                        style: TextStyle(
+                                          color: Colors.black45,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : ClipRRect(
+                                    borderRadius: BorderRadius.circular(22),
+                                    child: Image.file(
+                                      selectedProof!,
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        if (sheetError != null) ...[
+                          const SizedBox(height: 10),
+                          Text(
+                            sheetError!,
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: ElevatedButton.icon(
+                            onPressed: uploadingInvoicePayment
+                                ? null
+                                : submitPayment,
+                            icon: uploadingInvoicePayment
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.send_rounded),
+                            label: Text(
+                              uploadingInvoicePayment
+                                  ? "Mengirim..."
+                                  : "Kirim Pembayaran",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    amountController.dispose();
-    senderNameController.dispose();
-    notesController.dispose();
+              );
+            },
+          );
+        },
+      );
+  
+      if (payload == null) return;
+      if (!mounted) return;
+  
+      await uploadInvoicePayment(
+        invoice: invoice,
+        claimedAmount: payload["amount"]?.toString() ?? "",
+        senderName: payload["sender"]?.toString() ?? "",
+        notes: payload["notes"]?.toString() ?? "",
+        proofFile: payload["proof"] as File,
+      );
+    } finally {
+      amountController.dispose();
+      senderNameController.dispose();
+      notesController.dispose();
+    }
   }
 
   Future<void> showDetailSheet(Map<String, dynamic> item) async {

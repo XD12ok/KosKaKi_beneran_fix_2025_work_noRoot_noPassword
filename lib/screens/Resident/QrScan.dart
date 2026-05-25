@@ -102,11 +102,23 @@ class _QrScanPageState extends State<QrScanPage> {
           }
         }
 
+        final lowerMessage = message.toLowerCase();
+
+        if (lowerMessage.contains("no query results for model")) {
+          return "Kode family tidak ditemukan, sudah digunakan, atau sudah kadaluarsa.";
+        }
+
         return message;
       }
 
       return fallback;
     } catch (_) {
+      final lowerBody = body.toLowerCase();
+
+      if (lowerBody.contains("no query results for model")) {
+        return "Kode family tidak ditemukan, sudah digunakan, atau sudah kadaluarsa.";
+      }
+
       return fallback;
     }
   }
@@ -121,11 +133,174 @@ class _QrScanPageState extends State<QrScanPage> {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: isError ? Colors.red.shade600 : const Color(0xFF2D2F8F),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        backgroundColor: isError
+            ? Colors.red.shade600
+            : const Color(0xFF2D2F8F),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
+    );
+  }
+
+  String getJoinFamilyErrorType({
+    required int statusCode,
+    required String body,
+  }) {
+    final text = body.toLowerCase();
+
+    if (text.contains("no query results for model")) {
+      return "not_found_or_expired";
+    }
+
+    if (statusCode == 409 ||
+        text.contains("already used") ||
+        text.contains("has been used") ||
+        text.contains("used") ||
+        text.contains("sudah digunakan") ||
+        text.contains("telah digunakan") ||
+        text.contains("kode sudah dipakai") ||
+        text.contains("kode telah dipakai")) {
+      return "used";
+    }
+
+    if (statusCode == 410 ||
+        text.contains("expired") ||
+        text.contains("expire") ||
+        text.contains("kadaluarsa") ||
+        text.contains("kedaluwarsa") ||
+        text.contains("sudah habis") ||
+        text.contains("masa berlaku")) {
+      return "expired";
+    }
+
+    if (statusCode == 404 ||
+        text.contains("not found") ||
+        text.contains("tidak ditemukan")) {
+      return "not_found_or_expired";
+    }
+
+    return "";
+  }
+
+  Future<void> showFamilyCodeAlert({
+    required String title,
+    required String message,
+    required IconData icon,
+    required Color color,
+  }) async {
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          title: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(icon, color: color, size: 26),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF161A33),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.black54,
+              fontSize: 13,
+              height: 1.45,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text(
+                "Mengerti",
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> showJoinFamilyFailedAlert({
+    required int statusCode,
+    required String body,
+  }) async {
+    final errorType = getJoinFamilyErrorType(
+      statusCode: statusCode,
+      body: body,
+    );
+
+    final backendMessage = parseResponseMessage(
+      body,
+      "Gagal masuk family kost.",
+    );
+
+    if (errorType == "not_found_or_expired") {
+      await showFamilyCodeAlert(
+        title: "Kode Tidak Bisa Digunakan",
+        message:
+            "Kode family tidak ditemukan, sudah digunakan, atau sudah kadaluarsa. Minta kode family baru ke penyewa utama atau owner.",
+        icon: Icons.key_off_rounded,
+        color: Colors.red,
+      );
+      return;
+    }
+
+    if (errorType == "used") {
+      await showFamilyCodeAlert(
+        title: "Kode Sudah Digunakan",
+        message:
+            "Kode family ini sudah digunakan sebelumnya. Minta kode family baru ke penyewa utama atau owner.",
+        icon: Icons.lock_clock_rounded,
+        color: Colors.red,
+      );
+      return;
+    }
+
+    if (errorType == "expired") {
+      await showFamilyCodeAlert(
+        title: "Kode Sudah Kadaluarsa",
+        message:
+            "Kode family ini sudah melewati masa berlaku. Minta kode family baru agar bisa masuk family kost.",
+        icon: Icons.timer_off_rounded,
+        color: Colors.orange,
+      );
+      return;
+    }
+
+    await showFamilyCodeAlert(
+      title: "Gagal Masuk Family",
+      message: backendMessage,
+      icon: Icons.error_outline_rounded,
+      color: Colors.red,
     );
   }
 
@@ -133,20 +308,14 @@ class _QrScanPageState extends State<QrScanPage> {
     final code = codeController.text.trim().toUpperCase();
 
     if (!isValidFamilyCode(code)) {
-      showMessage(
-        "Format kode family harus seperti FAM-ABC123",
-        isError: true,
-      );
+      showMessage("Format kode family harus seperti FAM-ABC123", isError: true);
       return;
     }
 
     final token = cleanToken(await ApiService().getToken());
 
     if (token.isEmpty) {
-      showMessage(
-        "Token tidak ditemukan. Silakan login ulang.",
-        isError: true,
-      );
+      showMessage("Token tidak ditemukan. Silakan login ulang.", isError: true);
       return;
     }
 
@@ -161,9 +330,7 @@ class _QrScanPageState extends State<QrScanPage> {
           .post(
             Uri.parse("${ApiService.baseUrl}/family/join"),
             headers: authHeaders(token),
-            body: jsonEncode({
-              "code": code,
-            }),
+            body: jsonEncode({"code": code}),
           )
           .timeout(const Duration(seconds: 20));
 
@@ -183,10 +350,7 @@ class _QrScanPageState extends State<QrScanPage> {
 
       if (success) {
         showMessage(
-          parseResponseMessage(
-            response.body,
-            "Berhasil masuk family kost.",
-          ),
+          parseResponseMessage(response.body, "Berhasil masuk family kost."),
         );
 
         await Future.delayed(const Duration(milliseconds: 600));
@@ -197,12 +361,9 @@ class _QrScanPageState extends State<QrScanPage> {
         return;
       }
 
-      showMessage(
-        parseResponseMessage(
-          response.body,
-          "Gagal masuk family kost.",
-        ),
-        isError: true,
+      await showJoinFamilyFailedAlert(
+        statusCode: response.statusCode,
+        body: response.body,
       );
     } catch (e) {
       debugPrint("JOIN FAMILY ERROR:");
@@ -214,10 +375,7 @@ class _QrScanPageState extends State<QrScanPage> {
         isLoading = false;
       });
 
-      showMessage(
-        "Terjadi kesalahan saat masuk family kost.",
-        isError: true,
-      );
+      showMessage("Terjadi kesalahan saat masuk family kost.", isError: true);
     }
   }
 
@@ -226,10 +384,7 @@ class _QrScanPageState extends State<QrScanPage> {
     final text = data?.text ?? "";
 
     if (text.trim().isEmpty) {
-      showMessage(
-        "Clipboard kosong.",
-        isError: true,
-      );
+      showMessage("Clipboard kosong.", isError: true);
       return;
     }
 
@@ -254,18 +409,12 @@ class _QrScanPageState extends State<QrScanPage> {
           Positioned(
             top: -120,
             left: -90,
-            child: blurCircle(
-              color: const Color(0xFF5B5FEF),
-              size: 260,
-            ),
+            child: blurCircle(color: const Color(0xFF5B5FEF), size: 260),
           ),
           Positioned(
             bottom: -110,
             right: -90,
-            child: blurCircle(
-              color: const Color(0xFF2D2F8F),
-              size: 280,
-            ),
+            child: blurCircle(color: const Color(0xFF2D2F8F), size: 280),
           ),
           SafeArea(
             child: Column(
@@ -294,9 +443,7 @@ class _QrScanPageState extends State<QrScanPage> {
               child: Container(
                 color: Colors.black.withOpacity(0.18),
                 child: const Center(
-                  child: CircularProgressIndicator(
-                    color: Color(0xFF2D2F8F),
-                  ),
+                  child: CircularProgressIndicator(color: Color(0xFF2D2F8F)),
                 ),
               ),
             ),
@@ -313,16 +460,11 @@ class _QrScanPageState extends State<QrScanPage> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 12,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.82),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.9),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.9)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.05),
@@ -367,10 +509,7 @@ class _QrScanPageState extends State<QrScanPage> {
                   height: 42,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF2D2F8F),
-                        Color(0xFF5B5FEF),
-                      ],
+                      colors: [Color(0xFF2D2F8F), Color(0xFF5B5FEF)],
                     ),
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -394,10 +533,7 @@ class _QrScanPageState extends State<QrScanPage> {
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF2D2F8F),
-            Color(0xFF5B5FEF),
-          ],
+          colors: [Color(0xFF2D2F8F), Color(0xFF5B5FEF)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -418,15 +554,9 @@ class _QrScanPageState extends State<QrScanPage> {
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.16),
               borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.24),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(0.24)),
             ),
-            child: const Icon(
-              Icons.key_rounded,
-              color: Colors.white,
-              size: 44,
-            ),
+            child: const Icon(Icons.key_rounded, color: Colors.white, size: 44),
           ),
           const SizedBox(height: 18),
           const Text(
@@ -499,17 +629,13 @@ class _QrScanPageState extends State<QrScanPage> {
             keyboardType: TextInputType.text,
             maxLength: 10,
             inputFormatters: [
-              FilteringTextInputFormatter.allow(
-                RegExp(r'[a-zA-Z0-9-]'),
-              ),
+              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9-]')),
               TextInputFormatter.withFunction((oldValue, newValue) {
                 final formatted = formatFamilyCode(newValue.text);
 
                 return TextEditingValue(
                   text: formatted,
-                  selection: TextSelection.collapsed(
-                    offset: formatted.length,
-                  ),
+                  selection: TextSelection.collapsed(offset: formatted.length),
                 );
               }),
             ],
@@ -584,9 +710,7 @@ class _QrScanPageState extends State<QrScanPage> {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
-                      side: BorderSide(
-                        color: Colors.red.withOpacity(0.25),
-                      ),
+                      side: BorderSide(color: Colors.red.withOpacity(0.25)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),
@@ -647,18 +771,12 @@ class _QrScanPageState extends State<QrScanPage> {
       decoration: BoxDecoration(
         color: Colors.orange.withOpacity(0.10),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.orange.withOpacity(0.24),
-        ),
+        border: Border.all(color: Colors.orange.withOpacity(0.24)),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.info_outline_rounded,
-            color: Colors.orange,
-            size: 22,
-          ),
+          Icon(Icons.info_outline_rounded, color: Colors.orange, size: 22),
           SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -676,10 +794,7 @@ class _QrScanPageState extends State<QrScanPage> {
     );
   }
 
-  Widget blurCircle({
-    required Color color,
-    required double size,
-  }) {
+  Widget blurCircle({required Color color, required double size}) {
     return IgnorePointer(
       child: ImageFiltered(
         imageFilter: ImageFilter.blur(sigmaX: 48, sigmaY: 48),
@@ -695,10 +810,7 @@ class _QrScanPageState extends State<QrScanPage> {
     );
   }
 
-  Widget smallButton({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
+  Widget smallButton({required IconData icon, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -707,15 +819,9 @@ class _QrScanPageState extends State<QrScanPage> {
         decoration: BoxDecoration(
           color: const Color(0xFFEFF2FF),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFF2D2F8F).withOpacity(0.10),
-          ),
+          border: Border.all(color: const Color(0xFF2D2F8F).withOpacity(0.10)),
         ),
-        child: Icon(
-          icon,
-          color: const Color(0xFF2D2F8F),
-          size: 20,
-        ),
+        child: Icon(icon, color: const Color(0xFF2D2F8F), size: 20),
       ),
     );
   }

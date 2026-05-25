@@ -436,44 +436,49 @@ class _AddKostPageState extends State<AddKostPage> {
     }
   }
 
-  Future<void> uploadNearbyPlace({
+  Future<bool> uploadNearbyPlace({
     required String propertyId,
     required String token,
   }) async {
     try {
       if (selectedNearbyPlace == null) {
-        debugPrint("UPLOAD NEARBY PLACE DILEWATI: lokasi belum dipilih");
-        return;
+        debugPrint("NEARBY PLACE DILEWATI: belum pilih tempat");
+        return true;
       }
-
+  
       final placeId = selectedNearbyPlace!['id'];
-
-      final distanceText = nearbyDistanceController.text.trim().replaceAll(
-        ',',
-        '.',
-      );
-
+  
+      final distanceText = nearbyDistanceController.text
+          .trim()
+          .replaceAll(',', '.');
+  
       if (placeId == null || distanceText.isEmpty) {
-        debugPrint("UPLOAD NEARBY PLACE DILEWATI: placeId / distance kosong");
-        return;
+        showMessage("Pilih lokasi terdekat dan isi jaraknya");
+        return false;
       }
-
+  
       final distance = double.tryParse(distanceText);
-
+  
       if (distance == null) {
-        debugPrint("UPLOAD NEARBY PLACE DILEWATI: distance bukan angka");
-        return;
+        showMessage("Jarak lokasi terdekat harus berupa angka");
+        return false;
       }
-
+  
       final body = {
         "places": [
-          {"place_id": placeId, "distance": distance},
-        ],
+          {
+            "place_id": placeId,
+            "distance": distance,
+          }
+        ]
       };
-
+  
+      debugPrint("UPLOAD NEARBY PLACE URL:");
+      debugPrint("${ApiService.baseUrl}/properties/$propertyId/nearby-places");
+  
       debugPrint("UPLOAD NEARBY PLACE BODY:");
-      debugPrint(body.toString());
-
+      debugPrint(jsonEncode(body));
+  
       final response = await http.post(
         Uri.parse("${ApiService.baseUrl}/properties/$propertyId/nearby-places"),
         headers: {
@@ -483,15 +488,25 @@ class _AddKostPageState extends State<AddKostPage> {
         },
         body: jsonEncode(body),
       );
-
+  
       debugPrint("UPLOAD NEARBY PLACE STATUS:");
       debugPrint(response.statusCode.toString());
-
+  
       debugPrint("UPLOAD NEARBY PLACE RESPONSE:");
       debugPrint(response.body);
+  
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      }
+  
+      showMessage("Gagal menyimpan lokasi terdekat");
+      return false;
     } catch (e) {
       debugPrint("UPLOAD NEARBY PLACE ERROR:");
       debugPrint(e.toString());
+  
+      showMessage("Error lokasi terdekat: $e");
+      return false;
     }
   }
 
@@ -513,7 +528,7 @@ class _AddKostPageState extends State<AddKostPage> {
     if (hasNearbyInput) {
       if (selectedNearbyPlace == null ||
           nearbyDistanceController.text.trim().isEmpty) {
-        showMessage("Pilih lokasi terdekat dan isi jaraknya");
+        showMessage("Pilih transportasi terdekat dan isi jaraknya");
         return;
       }
     }
@@ -639,7 +654,20 @@ class _AddKostPageState extends State<AddKostPage> {
 
       await uploadRoomPolicies(propertyId: propertyId, token: token);
 
-      await uploadNearbyPlace(propertyId: propertyId, token: token);
+      final nearbySuccess = await uploadNearbyPlace(
+        propertyId: propertyId,
+        token: token,
+      );
+      
+      if (!nearbySuccess) {
+        if (mounted) {
+          setState(() {
+            isLoading = false;
+          });
+        }
+      
+        return;
+      }
 
       var request = http.MultipartRequest(
         'POST',
@@ -679,37 +707,6 @@ class _AddKostPageState extends State<AddKostPage> {
     }
   }
 
-  Future<void> addNearbyPlaces({
-    required String propertyId,
-    required String token,
-  }) async {
-    if (selectedNearbyPlace == null) return;
-
-    final placeId = selectedNearbyPlace!['id'];
-    final distanceText = nearbyDistanceController.text.trim();
-
-    if (placeId == null || distanceText.isEmpty) return;
-
-    final body = {
-      "places": [
-        {"place_id": placeId, "distance": distanceText.replaceAll(',', '.')},
-      ],
-    };
-
-    final response = await http.post(
-      Uri.parse("${ApiService.baseUrl}/properties/$propertyId/nearby-places"),
-      headers: {
-        "Authorization": "Bearer $token",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-      },
-      body: jsonEncode(body),
-    );
-
-    debugPrint("ADD NEARBY BODY: $body");
-    debugPrint("ADD NEARBY STATUS: ${response.statusCode}");
-    debugPrint("ADD NEARBY RESPONSE: ${response.body}");
-  }
 
   void showMessage(String msg, {bool success = false}) {
     if (!mounted) return;
@@ -1374,7 +1371,7 @@ class _AddKostPageState extends State<AddKostPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Lokasi Terdekat",
+                      "Transportasi Terdekat",
                       style: TextStyle(
                         color: primaryColor,
                         fontSize: 14,

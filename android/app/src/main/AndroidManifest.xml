@@ -21,10 +21,16 @@
             <data android:scheme="google.navigation" />
         </intent>
 
-        <!-- Untuk fallback ke Google Maps web -->
+        <!-- Untuk fallback ke browser / Google Maps web -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+
+        <!-- Untuk custom deep link koskaki:// -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="koskaki" />
         </intent>
 
         <!-- Default Flutter text processing -->
@@ -38,7 +44,8 @@
         android:label="Koskaki"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:hardwareAccelerated="true">
+        android:hardwareAccelerated="true"
+    >
 
         <activity
             android:name=".MainActivity"
@@ -48,11 +55,13 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+            android:windowSoftInputMode="adjustResize"
+        >
 
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme" />
+                android:resource="@style/NormalTheme"
+            />
 
             <!-- Launcher aplikasi -->
             <intent-filter>
@@ -60,7 +69,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Deep Link untuk reset password -->
+            <!-- Deep Link HTTPS reset password dari backend -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
 
@@ -69,11 +78,12 @@
 
                 <data
                     android:scheme="https"
-                    android:host="DOMAIN_BACKEND_TEMANMU"
-                    android:pathPrefix="/reset-password" />
+                    android:host="koskaki-api.servermbud.online"
+                    android:pathPrefix="/reset-password"
+                />
             </intent-filter>
 
-            <!-- Deep Link custom app Koskaki -->
+            <!-- Deep Link custom untuk reset password -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -83,14 +93,27 @@
                 <data
                     android:scheme="koskaki"
                     android:host="auth"
-                    android:pathPrefix="/welcome" />
+                    android:pathPrefix="/reset-password"
+                />
+            </intent-filter>
+
+            <!-- Deep Link custom untuk welcome -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:scheme="koskaki"
+                    android:host="auth"
+                    android:pathPrefix="/welcome"
+                />
             </intent-filter>
 
         </activity>
 
-        <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
+        <meta-data android:name="flutterEmbedding" android:value="2" />
 
     </application>
 

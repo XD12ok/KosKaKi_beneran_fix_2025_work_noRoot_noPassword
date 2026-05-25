@@ -1606,13 +1606,13 @@ class _DetailKostPageState extends State<DetailKostPage> {
 
   Widget nearbyPlacesSection({required List<dynamic> items}) {
     return sectionCard(
-      title: "Lokasi Terdekat",
+      title: "Jarak Dengan Transportasi",
       icon: Icons.near_me_outlined,
       children: [
         if (items.isEmpty)
           emptyMiniState(
             icon: Icons.location_off_outlined,
-            text: "Lokasi terdekat belum ditambahkan",
+            text: "Jarak dengan transportasi belum ditambahkan",
           )
         else
           Column(

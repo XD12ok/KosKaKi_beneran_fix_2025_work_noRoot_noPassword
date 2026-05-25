@@ -1798,11 +1798,11 @@ class _EditKostPageState extends State<EditKostPage> {
   }) async {
     try {
       final List<Map<String, dynamic>> places = [];
-  
+
       if (selectedNearbyPlace != null) {
         final placeId = selectedNearbyPlace!['id'];
         final distanceText = nearbyDistanceController.text.trim();
-  
+
         if (placeId != null && distanceText.isNotEmpty) {
           places.add({
             "place_id": placeId,
@@ -1810,11 +1810,9 @@ class _EditKostPageState extends State<EditKostPage> {
           });
         }
       }
-  
-      final body = {
-        "places": places,
-      };
-  
+
+      final body = {"places": places};
+
       final response = await http.put(
         Uri.parse("${ApiService.baseUrl}/properties/$propertyId/nearby-places"),
         headers: {
@@ -1824,7 +1822,7 @@ class _EditKostPageState extends State<EditKostPage> {
         },
         body: jsonEncode(body),
       );
-  
+
       debugPrint("EDIT NEARBY BODY: $body");
       debugPrint("EDIT NEARBY STATUS: ${response.statusCode}");
       debugPrint("EDIT NEARBY RESPONSE: ${response.body}");
@@ -3610,7 +3608,7 @@ class _EditKostPageState extends State<EditKostPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Lokasi Terdekat",
+                      "Jarak Dengan Transportasi",
                       style: TextStyle(
                         color: primaryColor,
                         fontSize: 14,

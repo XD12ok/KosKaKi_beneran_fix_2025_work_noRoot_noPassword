@@ -935,44 +935,43 @@ class _DetailKosPageState extends State<DetailKosPage> {
 
   Future<void> openAddressInMaps(String address) async {
     final cleanAddress = address.trim();
-  
+
     if (cleanAddress.isEmpty ||
         cleanAddress == "Belum ditambahkan" ||
         cleanAddress == "Alamat belum tersedia") {
       showDetailMessage("Alamat kos belum tersedia.");
       return;
     }
-  
+
     final encodedAddress = Uri.encodeComponent(cleanAddress);
-  
+
     final geoUri = Uri.parse("geo:0,0?q=$encodedAddress");
-    final googleNavigationUri = Uri.parse("google.navigation:q=$encodedAddress");
+    final googleNavigationUri = Uri.parse(
+      "google.navigation:q=$encodedAddress",
+    );
     final webUri = Uri.parse(
       "https://www.google.com/maps/search/?api=1&query=$encodedAddress",
     );
-  
+
     debugPrint("OPEN MAPS ADDRESS:");
     debugPrint(cleanAddress);
-  
+
     debugPrint("OPEN MAPS GEO URI:");
     debugPrint(geoUri.toString());
-  
+
     debugPrint("OPEN MAPS WEB URI:");
     debugPrint(webUri.toString());
-  
+
     try {
       bool opened = false;
-  
+
       try {
-        opened = await launchUrl(
-          geoUri,
-          mode: LaunchMode.externalApplication,
-        );
+        opened = await launchUrl(geoUri, mode: LaunchMode.externalApplication);
       } catch (e) {
         debugPrint("OPEN GEO MAPS FAILED:");
         debugPrint(e.toString());
       }
-  
+
       if (!opened) {
         try {
           opened = await launchUrl(
@@ -984,21 +983,18 @@ class _DetailKosPageState extends State<DetailKosPage> {
           debugPrint(e.toString());
         }
       }
-  
+
       if (!opened) {
-        opened = await launchUrl(
-          webUri,
-          mode: LaunchMode.externalApplication,
-        );
+        opened = await launchUrl(webUri, mode: LaunchMode.externalApplication);
       }
-  
+
       if (!opened) {
         showDetailMessage("Tidak bisa membuka Google Maps.");
       }
     } catch (e) {
       debugPrint("OPEN MAPS ERROR:");
       debugPrint(e.toString());
-  
+
       showDetailMessage("Gagal membuka Maps.");
     }
   }
@@ -1727,13 +1723,13 @@ class _DetailKosPageState extends State<DetailKosPage> {
 
   Widget nearbyPlacesSection({required List<dynamic> items}) {
     return sectionCard(
-      title: "Lokasi Terdekat",
+      title: "Jarak Dengan Transportasi",
       icon: Icons.near_me_outlined,
       children: [
         if (items.isEmpty)
           emptyMiniState(
             icon: Icons.location_off_outlined,
-            text: "Lokasi terdekat belum ditambahkan",
+            text: "Transportasi terdekat belum ditambahkan",
           )
         else
           Column(

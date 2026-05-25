@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:koskaki/screens/WelcomeScreen.dart';
 import 'package:koskaki/screens/auth/resetpass.dart';
 import 'package:koskaki/screens/splash_screen.dart';
 
@@ -20,74 +21,147 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  final AppLinks _appLinks = AppLinks();
+  final AppLinks appLinks = AppLinks();
 
-  StreamSubscription<Uri>? _linkSubscription;
-  String? _lastHandledLink;
+  StreamSubscription<Uri>? linkSubscription;
+  String? lastHandledLink;
 
   @override
   void initState() {
     super.initState();
-    _initDeepLink();
+    initDeepLink();
   }
 
-  Future<void> _initDeepLink() async {
+  Future<void> initDeepLink() async {
     try {
-      final Uri? initialLink = await _appLinks.getInitialLink();
+      final Uri? initialLink = await appLinks.getInitialLink();
 
       if (initialLink != null) {
-        _handleDeepLink(initialLink);
+        handleDeepLink(initialLink);
       }
 
-      _linkSubscription = _appLinks.uriLinkStream.listen(
+      linkSubscription = appLinks.uriLinkStream.listen(
         (Uri uri) {
-          _handleDeepLink(uri);
+          handleDeepLink(uri);
         },
         onError: (error) {
-          debugPrint("DEEPLINK STREAM ERROR: $error");
+          debugPrint("DEEPLINK STREAM ERROR:");
+          debugPrint(error.toString());
         },
       );
     } catch (e) {
-      debugPrint("DEEPLINK INIT ERROR: $e");
+      debugPrint("DEEPLINK INIT ERROR:");
+      debugPrint(e.toString());
     }
   }
 
-  void _handleDeepLink(Uri uri) {
-    debugPrint("DEEPLINK MASUK: $uri");
+  void handleDeepLink(Uri uri) {
+    debugPrint("DEEPLINK MASUK:");
+    debugPrint(uri.toString());
 
     final currentLink = uri.toString();
 
-    if (_lastHandledLink == currentLink) {
+    if (lastHandledLink == currentLink) {
       return;
     }
 
-    _lastHandledLink = currentLink;
+    lastHandledLink = currentLink;
 
-    final String email = uri.queryParameters["email"] ?? "";
+    final scheme = uri.scheme.toLowerCase();
+    final host = uri.host.toLowerCase();
+    final path = uri.path.toLowerCase();
 
-    String token = uri.queryParameters["token"] ?? "";
+    debugPrint("DEEPLINK SCHEME: $scheme");
+    debugPrint("DEEPLINK HOST: $host");
+    debugPrint("DEEPLINK PATH: $path");
+    debugPrint("DEEPLINK QUERY: ${uri.queryParameters}");
 
-    if (token.isEmpty && uri.pathSegments.isNotEmpty) {
-      token = uri.pathSegments.last;
+    final isResetPasswordLink =
+        path.contains("reset-password") ||
+        currentLink.toLowerCase().contains("reset-password");
+
+    final isWelcomeLink =
+        path.contains("welcome") ||
+        currentLink.toLowerCase().contains("welcome");
+
+    if (isResetPasswordLink) {
+      openResetPasswordFromLink(uri);
+      return;
     }
 
+    if (isWelcomeLink || (scheme == "koskaki" && host == "auth")) {
+      openWelcomeScreen();
+      return;
+    }
+
+    debugPrint("DEEPLINK TIDAK DIKENALI:");
+    debugPrint(uri.toString());
+  }
+
+  void openResetPasswordFromLink(Uri uri) {
+    final email = Uri.decodeComponent(
+      uri.queryParameters["email"] ?? "",
+    ).trim();
+
+    String token = Uri.decodeComponent(
+      uri.queryParameters["token"] ?? "",
+    ).trim();
+
+    if (token.isEmpty && uri.pathSegments.isNotEmpty) {
+      token = Uri.decodeComponent(uri.pathSegments.last).trim();
+    }
+
+    debugPrint("RESET EMAIL:");
+    debugPrint(email);
+
+    debugPrint("RESET TOKEN:");
+    debugPrint(token);
+
     if (email.isEmpty || token.isEmpty) {
-      debugPrint("DEEPLINK TIDAK VALID: email/token kosong");
+      debugPrint("DEEPLINK RESET TIDAK VALID: email/token kosong");
       return;
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      navigatorKey.currentState?.push(
+      final navigator = navigatorKey.currentState;
+
+      if (navigator == null) {
+        debugPrint("NAVIGATOR NULL SAAT RESET PASSWORD");
+        return;
+      }
+
+      navigator.push(
         MaterialPageRoute(
-          builder: (_) => ResetPassPage(email: email, token: token),
+          builder: (_) => ResetPassPage(
+            email: email,
+            token: token,
+          ),
         ),
+      );
+    });
+  }
+
+  void openWelcomeScreen() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final navigator = navigatorKey.currentState;
+
+      if (navigator == null) {
+        debugPrint("NAVIGATOR NULL SAAT WELCOME");
+        return;
+      }
+
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (_) => const WelcomeScreen(),
+        ),
+        (route) => false,
       );
     });
   }
 
   @override
   void dispose() {
-    _linkSubscription?.cancel();
+    linkSubscription?.cancel();
     super.dispose();
   }
 
@@ -96,8 +170,11 @@ class _MyAppState extends State<MyApp> {
     return MaterialApp(
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
-      title: 'Koskaki',
-      theme: ThemeData(useMaterial3: true, fontFamily: 'Poppins'),
+      title: "Koskaki",
+      theme: ThemeData(
+        useMaterial3: true,
+        fontFamily: "Poppins",
+      ),
       home: const SplashScreen(),
     );
   }

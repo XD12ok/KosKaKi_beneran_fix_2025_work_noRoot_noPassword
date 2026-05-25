@@ -240,42 +240,42 @@ class _FamilyUserState extends State<FamilyUser> {
 
   Future<Set<int>> collectPropertyIds(String token) async {
     final Set<int> ids = {};
-
+  
     bookingByPropertyId.clear();
-
+  
     await collectPropertyIdsFromLocal(ids);
-
+  
     final cacheBuster = DateTime.now().millisecondsSinceEpoch;
-
+  
     final urls = [
       "${ApiService.baseUrl}/rental-bookings?_=$cacheBuster",
       "${ApiService.baseUrl}/rental-bookings/history?_=$cacheBuster",
     ];
-
+  
     for (final url in urls) {
       try {
         final response = await http
             .get(Uri.parse(url), headers: authHeaders(token))
             .timeout(const Duration(seconds: 20));
-
+  
         debugPrint("COLLECT FAMILY PROPERTY IDS URL:");
         debugPrint(url);
-
+  
         debugPrint("COLLECT FAMILY PROPERTY IDS STATUS:");
         debugPrint(response.statusCode.toString());
-
+  
         debugPrint("COLLECT FAMILY PROPERTY IDS BODY:");
         debugPrint(response.body);
-
+  
         if (response.statusCode == 200) {
           final decoded = jsonDecode(response.body);
           final data = parseDataList(decoded);
-
+  
           for (final item in data) {
             final booking = Map<String, dynamic>.from(item);
-
+  
             final propertyId = getPropertyIdFromBooking(booking);
-
+  
             if (propertyId > 0) {
               ids.add(propertyId);
               bookingByPropertyId[propertyId] = booking;
@@ -287,7 +287,15 @@ class _FamilyUserState extends State<FamilyUser> {
         debugPrint(e.toString());
       }
     }
-
+  
+    final leftFamilyIds = await readLeftFamilyPropertyIds();
+  
+    ids.removeAll(leftFamilyIds);
+  
+    bookingByPropertyId.removeWhere((propertyId, booking) {
+      return leftFamilyIds.contains(propertyId);
+    });
+  
     return ids;
   }
 
@@ -373,50 +381,63 @@ class _FamilyUserState extends State<FamilyUser> {
             headers: authHeaders(token),
           )
           .timeout(const Duration(seconds: 20));
-
+  
       debugPrint("GET FAMILY MEMBERS FOR USER STATUS:");
       debugPrint(response.statusCode.toString());
-
+  
       debugPrint("GET FAMILY MEMBERS FOR USER PROPERTY ID:");
       debugPrint(propertyId.toString());
-
+  
       debugPrint("GET FAMILY MEMBERS FOR USER BODY:");
       debugPrint(response.body);
-
+  
       final booking = bookingByPropertyId[propertyId];
-
+  
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-
+  
         final members = parseDataList(decoded);
-
+  
         final isOwner = decoded is Map && decoded["is_owner"] == true;
-
+  
         final totalMembers = decoded is Map
             ? toInt(decoded["total_members"] ?? members.length)
             : members.length;
-
+  
         Map<String, dynamic>? myMember;
-
+  
         for (final member in members) {
           final user = asMap(member["user"]);
           final userId = toInt(user?["id"] ?? member["user_id"]);
-
+  
           if (currentUserId > 0 && userId == currentUserId) {
             myMember = member;
             break;
           }
         }
-
+  
+        // FIX UTAMA:
+        // Kalau endpoint members berhasil, tapi user ini sudah tidak ada di members,
+        // berarti user sudah keluar / dikeluarkan owner.
+        // Jangan tampilkan family lagi.
+        if (currentUserId > 0 && myMember == null && !isOwner) {
+          debugPrint("CURRENT USER SUDAH BUKAN MEMBER FAMILY:");
+          debugPrint(propertyId.toString());
+  
+          await markFamilyAsLeftLocally(propertyId);
+  
+          return null;
+        }
+  
         final joinedAt =
             myMember?["joined_at"] ??
             booking?["family_joined_at"] ??
             booking?["approved_at"] ??
             booking?["created_at"];
-
+  
         final rental =
             asMap(myMember?["rental"]) ?? booking ?? <String, dynamic>{};
-
+  
         return {
           "place_property_id": propertyId,
           "property": {
@@ -433,7 +454,23 @@ class _FamilyUserState extends State<FamilyUser> {
           "rental": rental,
         };
       }
-
+  
+      // Kalau backend bilang user bukan member / sudah dikeluarkan,
+      // simpan blacklist lokal agar tidak muncul lagi dari cache/booking.
+      if (isUserRemovedFromFamilyResponse(
+        statusCode: response.statusCode,
+        body: response.body,
+      )) {
+        debugPrint("FAMILY DIHAPUS DARI USER / USER BUKAN MEMBER:");
+        debugPrint(propertyId.toString());
+  
+        await markFamilyAsLeftLocally(propertyId);
+  
+        return null;
+      }
+  
+      // Fallback lama hanya dipakai kalau route memang belum bisa memberi data,
+      // bukan untuk kasus user sudah dikeluarkan.
       if (booking != null) {
         return {
           "place_property_id": propertyId,
@@ -455,9 +492,9 @@ class _FamilyUserState extends State<FamilyUser> {
           "access_denied_members": true,
         };
       }
-
+  
       final property = propertyById[propertyId];
-
+  
       if (property != null) {
         return {
           "place_property_id": propertyId,
@@ -480,7 +517,7 @@ class _FamilyUserState extends State<FamilyUser> {
       debugPrint("GET FAMILY MEMBERS FOR USER ERROR:");
       debugPrint(e.toString());
     }
-
+  
     return null;
   }
 
@@ -727,26 +764,18 @@ class _FamilyUserState extends State<FamilyUser> {
 
   Future<void> leaveFamily(Map<String, dynamic> family) async {
     final property = asMap(family["property"]);
-
+  
     final propertyId = toInt(
       family["place_property_id"] ?? property?["id"] ?? family["property_id"],
     );
-
+  
     if (propertyId <= 0) {
       showMessage("Property ID tidak ditemukan.", isError: true);
       return;
     }
-
+  
     final mainTenant = family["is_main_tenant"] == true;
-
-    if (mainTenant) {
-      showMessage(
-        "Penghuni utama tidak bisa keluar dari family.",
-        isError: true,
-      );
-      return;
-    }
-
+  
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -759,7 +788,9 @@ class _FamilyUserState extends State<FamilyUser> {
             style: TextStyle(fontWeight: FontWeight.w900),
           ),
           content: Text(
-            "Kamu yakin ingin keluar dari ${getPropertyName(family)}?",
+            mainTenant
+                ? "Kamu adalah penghuni utama. Jika keluar dari ${getPropertyName(family)}, family ini tidak akan muncul lagi di halaman kamu. Lanjut keluar?"
+                : "Kamu yakin ingin keluar dari ${getPropertyName(family)}?",
           ),
           actions: [
             TextButton(
@@ -784,53 +815,68 @@ class _FamilyUserState extends State<FamilyUser> {
         );
       },
     );
-
+  
     if (confirm != true) return;
-
+  
     final token = cleanToken(await ApiService().getToken());
-
+  
     if (token.isEmpty) {
       showMessage("Token tidak ditemukan. Silakan login ulang.", isError: true);
       return;
     }
-
+  
     if (!mounted) return;
-
+  
     setState(() {
       actionLoading = true;
     });
-
+  
     try {
-      final response = await http
-          .delete(
-            Uri.parse("${ApiService.baseUrl}/properties/$propertyId/leave"),
-            headers: authHeaders(token),
-          )
-          .timeout(const Duration(seconds: 20));
-
-      debugPrint("LEAVE FAMILY STATUS:");
-      debugPrint(response.statusCode.toString());
-
-      debugPrint("LEAVE FAMILY BODY:");
-      debugPrint(response.body);
-
+      final response = await sendLeaveFamilyRequest(
+        propertyId: propertyId,
+        token: token,
+      );
+  
       if (!mounted) return;
-
+  
       setState(() {
         actionLoading = false;
       });
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        await removeLocalFamilyPropertyId(propertyId);
-
+  
+      if (response == null) {
+        showMessage("Route keluar family tidak ditemukan.", isError: true);
+        return;
+      }
+  
+      if (response.statusCode == 200 ||
+          response.statusCode == 201 ||
+          response.statusCode == 204) {
+        await markFamilyAsLeftLocally(propertyId);
+  
+        if (!mounted) return;
+  
+        setState(() {
+          families.removeWhere((item) {
+            final itemProperty = asMap(item["property"]);
+  
+            final itemPropertyId = toInt(
+              item["place_property_id"] ??
+                  itemProperty?["id"] ??
+                  item["property_id"],
+            );
+  
+            return itemPropertyId == propertyId;
+          });
+        });
+  
         showMessage(
           parseResponseMessage(response.body, "Berhasil keluar dari family."),
         );
-
+  
         await loadFamilyUser();
         return;
       }
-
+  
       showMessage(
         parseResponseMessage(response.body, "Gagal keluar dari family."),
         isError: true,
@@ -838,13 +884,13 @@ class _FamilyUserState extends State<FamilyUser> {
     } catch (e) {
       debugPrint("LEAVE FAMILY ERROR:");
       debugPrint(e.toString());
-
+  
       if (!mounted) return;
-
+  
       setState(() {
         actionLoading = false;
       });
-
+  
       showMessage("Terjadi kesalahan saat keluar family.", isError: true);
     }
   }
@@ -881,6 +927,152 @@ class _FamilyUserState extends State<FamilyUser> {
       debugPrint("REMOVE LOCAL FAMILY ID ERROR:");
       debugPrint(e.toString());
     }
+  }
+
+  Future<Set<int>> readLeftFamilyPropertyIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+  
+      final list = prefs.getStringList("left_family_property_ids") ?? [];
+  
+      return list
+          .map((item) => toInt(item))
+          .where((id) => id > 0)
+          .toSet();
+    } catch (e) {
+      debugPrint("READ LEFT FAMILY IDS ERROR:");
+      debugPrint(e.toString());
+      return {};
+    }
+  }
+  
+  Future<void> markFamilyAsLeftLocally(int propertyId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+  
+      final currentList = prefs.getStringList("left_family_property_ids") ?? [];
+  
+      final ids = currentList
+          .map((item) => toInt(item))
+          .where((id) => id > 0)
+          .toSet();
+  
+      ids.add(propertyId);
+  
+      await prefs.setStringList(
+        "left_family_property_ids",
+        ids.map((id) => id.toString()).toList(),
+      );
+  
+      await removeLocalFamilyPropertyId(propertyId);
+  
+      bookingByPropertyId.remove(propertyId);
+    } catch (e) {
+      debugPrint("MARK FAMILY LEFT LOCAL ERROR:");
+      debugPrint(e.toString());
+    }
+  }
+  
+  bool isUserRemovedFromFamilyResponse({
+    required int statusCode,
+    required String body,
+  }) {
+    final text = body.toLowerCase();
+  
+    if (statusCode == 401) return false;
+  
+    if (statusCode == 403 || statusCode == 410) return true;
+  
+    if (text.contains("not member")) return true;
+    if (text.contains("not a member")) return true;
+    if (text.contains("bukan member")) return true;
+    if (text.contains("bukan anggota")) return true;
+    if (text.contains("not joined")) return true;
+    if (text.contains("belum join")) return true;
+    if (text.contains("removed")) return true;
+    if (text.contains("dikeluarkan")) return true;
+    if (text.contains("keluar dari family")) return true;
+    if (text.contains("family not found")) return true;
+  
+    return false;
+  }
+
+  
+  Future<http.Response?> sendLeaveFamilyRequest({
+    required int propertyId,
+    required String token,
+  }) async {
+    final requests = [
+      {
+        "method": "DELETE",
+        "url": "${ApiService.baseUrl}/properties/$propertyId/leave",
+      },
+      {
+        "method": "DELETE",
+        "url": "${ApiService.baseUrl}/family/properties/$propertyId/leave",
+      },
+      {
+        "method": "POST",
+        "url": "${ApiService.baseUrl}/properties/$propertyId/leave",
+      },
+      {
+        "method": "POST",
+        "url": "${ApiService.baseUrl}/family/properties/$propertyId/leave",
+      },
+    ];
+  
+    http.Response? lastResponse;
+  
+    for (final item in requests) {
+      final method = item["method"]!;
+      final url = item["url"]!;
+  
+      try {
+        http.Response response;
+  
+        if (method == "DELETE") {
+          response = await http
+              .delete(
+                Uri.parse(url),
+                headers: authHeaders(token),
+              )
+              .timeout(const Duration(seconds: 20));
+        } else {
+          response = await http
+              .post(
+                Uri.parse(url),
+                headers: authHeaders(token),
+                body: jsonEncode({}),
+              )
+              .timeout(const Duration(seconds: 20));
+        }
+  
+        lastResponse = response;
+  
+        debugPrint("LEAVE FAMILY URL:");
+        debugPrint(url);
+  
+        debugPrint("LEAVE FAMILY METHOD:");
+        debugPrint(method);
+  
+        debugPrint("LEAVE FAMILY STATUS:");
+        debugPrint(response.statusCode.toString());
+  
+        debugPrint("LEAVE FAMILY BODY:");
+        debugPrint(response.body);
+  
+        if (response.statusCode == 404 || response.statusCode == 405) {
+          continue;
+        }
+  
+        return response;
+      } catch (e) {
+        debugPrint("LEAVE FAMILY REQUEST ERROR:");
+        debugPrint(e.toString());
+      }
+    }
+  
+    return lastResponse;
   }
 
   void showFamilyDetail(Map<String, dynamic> family) {
@@ -1070,35 +1262,37 @@ class _FamilyUserState extends State<FamilyUser> {
                           ...members.map(buildMemberItem).toList(),
                         ],
                         const SizedBox(height: 10),
-                        if (isMain)
-                          buildMainTenantBox()
-                        else
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: BorderSide(
-                                  color: Colors.red.withOpacity(0.35),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(18),
-                                ),
+                        if (isMain) ...[
+                          buildMainTenantBox(),
+                          const SizedBox(height: 10),
+                        ],
+                        
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: BorderSide(
+                                color: Colors.red.withOpacity(0.35),
                               ),
-                              onPressed: actionLoading
-                                  ? null
-                                  : () {
-                                      Navigator.pop(context);
-                                      leaveFamily(family);
-                                    },
-                              icon: const Icon(Icons.exit_to_app_rounded),
-                              label: const Text(
-                                "Keluar dari Family",
-                                style: TextStyle(fontWeight: FontWeight.w900),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
                               ),
                             ),
+                            onPressed: actionLoading
+                                ? null
+                                : () {
+                                    Navigator.pop(context);
+                                    leaveFamily(family);
+                                  },
+                            icon: const Icon(Icons.exit_to_app_rounded),
+                            label: Text(
+                              isMain ? "Keluar sebagai Penghuni Utama" : "Keluar dari Family",
+                              style: const TextStyle(fontWeight: FontWeight.w900),
+                            ),
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -2200,7 +2394,7 @@ class _FamilyUserState extends State<FamilyUser> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  "Family yang bisa dibaca dari route saat ini akan muncul di sini. Untuk masuk family, gunakan kode family.",
+                  "Untuk masuk family, gunakan kode family.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.black54,
