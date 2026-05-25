@@ -963,87 +963,6 @@ class _PaymentState extends State<Payment> {
     );
   }
 
-  Future<void> sendPaymentCardToChat({
-    required int rentalPaymentId,
-    required String proofUrl,
-  }) async {
-    if (ownerId == null || ownerId! <= 0) {
-      throw Exception(
-        "ID owner tidak ditemukan untuk mengirim notifikasi chat",
-      );
-    }
-
-    if (propertyId == null || propertyId! <= 0) {
-      throw Exception("ID kos tidak ditemukan untuk mengirim notifikasi chat");
-    }
-
-    final conversationId = await ApiService().createOrGetConversationId(
-      ownerId: ownerId!,
-      placePropertyId: propertyId!,
-    );
-
-    if (conversationId == null || conversationId <= 0) {
-      throw Exception("Gagal membuat conversation untuk notifikasi owner");
-    }
-
-    final claimedAmount = getClaimedAmount();
-
-    final payload = {
-      "card_type": "rental_payment",
-      "rental_booking_id": rentalBookingId,
-      "rental_payment_id": rentalPaymentId,
-      "place_properties_id": propertyId,
-      "property_id": propertyId,
-      "owner_id": ownerId,
-      "title": title,
-      "address": address,
-      "image_url": getImageUrl(),
-      "proof_url": proofUrl,
-      "rental_type": rentalType,
-      "rental_title": rentalTitle,
-      "duration": duration,
-      "duration_label": durationLabel,
-      "start_date": startDate,
-      "end_date": endDate,
-      "period_start": startDate,
-      "period_end": endDate,
-      "unit_price": unitPrice,
-      "total_price": claimedAmount,
-      "claimed_amount": claimedAmount,
-
-      "sender_name": senderName.trim(),
-      "notes": notes.trim(),
-
-      "status": "pending",
-      "payment_status": "pending",
-      "created_by": "resident",
-      "owner_actions": ["approve", "reject"],
-    };
-
-    final message = "$rentalPaymentPrefix${jsonEncode(payload)}";
-
-    final result = await ApiService().sendConversationMessage(
-      conversationId: conversationId,
-      message: message,
-    );
-
-    if (result == null) {
-      throw Exception(
-        "Pembayaran terupload, tapi gagal mengirim notifikasi chat",
-      );
-    }
-
-    if (!mounted) return;
-
-    showMessage("Bukti pembayaran berhasil dikirim", success: true);
-
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => RiwayatSewaPage()),
-      (route) => false,
-    );
-  }
-
   Future<void> submitPayment() async {
     if (!validatePayment()) return;
 
@@ -1071,11 +990,6 @@ class _PaymentState extends State<Payment> {
           "Bukti pembayaran berhasil dikirim, tapi ID payment tidak ditemukan",
         );
       }
-
-      await sendPaymentCardToChat(
-        rentalPaymentId: rentalPaymentId,
-        proofUrl: proofUrl,
-      );
     } catch (e) {
       debugPrint("SUBMIT PAYMENT ERROR:");
       debugPrint(e.toString());

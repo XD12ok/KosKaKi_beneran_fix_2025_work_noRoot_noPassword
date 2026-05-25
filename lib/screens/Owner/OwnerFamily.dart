@@ -1242,8 +1242,8 @@ class _OwnerFamilyDetailState extends State<OwnerFamilyDetail> {
           const SizedBox(height: 6),
           Text(
             activeRentalBookingId == null
-                ? 'Rental booking aktif untuk kos ini belum ditemukan.'
-                : 'Rental Booking ID: $activeRentalBookingId',
+                ? 'Perlu ada bookingan untuk membuat kode'
+                : 'Family sudah dibuat!',
             style: TextStyle(
               color: activeRentalBookingId == null
                   ? Colors.red.shade600
