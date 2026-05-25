@@ -28,6 +28,9 @@ environment:
 # the latest version available on pub.dev. To see which dependencies have newer
 # versions available, run `flutter pub outdated`.
 dependencies:
+  app_links: ^6.3.2
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
   shared_preferences: ^2.5.3
   google_fonts: ^6.1.0
   pinput: ^3.0.1
@@ -37,8 +40,6 @@ dependencies:
   country_code_picker: ^3.4.1
   flutter_screenutil: ^5.9.0
   intl_phone_field: ^3.2.0
-  firebase_core: ^4.2.1
-  supabase_flutter: ^2.0.0
   flutter_image_compress: ^2.3.0
   http: ^1.6.0
   intl: ^0.18.1

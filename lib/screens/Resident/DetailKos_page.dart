@@ -8,6 +8,8 @@ import 'package:koskaki/screens/Resident/AjukanSurvey.dart';
 import 'package:koskaki/screens/Resident/PengajuanSewa.dart';
 import 'package:koskaki/service/api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class DetailKosPage extends StatefulWidget {
   final Map<String, dynamic> kos;
@@ -17,7 +19,7 @@ class DetailKosPage extends StatefulWidget {
   @override
   State<DetailKosPage> createState() => _DetailKosPageState();
 }
-
+final GlobalKey mapKey = GlobalKey();
 class _DetailKosPageState extends State<DetailKosPage> {
   bool isLoading = true;
 
@@ -36,6 +38,19 @@ class _DetailKosPageState extends State<DetailKosPage> {
   void initState() {
     super.initState();
     getDetail();
+  }
+
+  Future<void> openGoogleMaps(double lat, double lng) async {
+    final url =
+        "https://www.google.com/maps/search/?api=1&query=$lat,$lng";
+
+    final uri = Uri.parse(url);
+
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint("ERROR OPEN MAPS: $e");
+    }
   }
 
   Future<void> getDetail() async {
@@ -1156,6 +1171,10 @@ class _DetailKosPageState extends State<DetailKosPage> {
 
     final address = d['address']?.toString() ?? "";
 
+    final lat = double.tryParse(d['latitude']?.toString() ?? "");
+
+    final lng = double.tryParse(d['longitude']?.toString() ?? "");
+
     final maxPeople = d['max_people']?.toString() ?? "";
 
     final status = d['status']?.toString() ?? "active";
@@ -1235,6 +1254,8 @@ class _DetailKosPageState extends State<DetailKosPage> {
                       ratingAvg: ratingAvg,
                       ratingCount: ratingCount,
                     ),
+                    if (lat != null && lng != null)
+                      osmMapSection(lat, lng),
                     nearbyPlacesSection(items: nearbyPlaces),
                     descriptionSection(description),
                     facilitySection(
@@ -2289,6 +2310,70 @@ class _DetailKosPageState extends State<DetailKosPage> {
               );
             },
           ),
+      ],
+    );
+  }
+
+  Widget osmMapSection(double lat, double lng) {
+    return sectionCard(
+      title: "Lokasi di Peta",
+      icon: Icons.map_outlined,
+      children: [
+        Container(
+          key: mapKey,
+          height: 220,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: FlutterMap(
+            options: MapOptions(
+              initialCenter: LatLng(lat, lng),
+              initialZoom: 16,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                userAgentPackageName: "com.koskaki.app",
+              ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: LatLng(lat, lng),
+                    width: 50,
+                    height: 50,
+                    child: const Icon(
+                      Icons.location_pin,
+                      color: Colors.red,
+                      size: 40,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        Row(
+          children: [
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0A0E50), // navy gelap
+                  foregroundColor: Colors.white, // teks + icon jadi putih
+                ),
+                onPressed: () {
+                  openGoogleMaps(lat, lng);
+                },
+                icon: const Icon(Icons.navigation),
+                label: const Text("Navigasi (Gmaps)"),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

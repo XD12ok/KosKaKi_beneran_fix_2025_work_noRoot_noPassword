@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:koskaki/screens/Owner/RatingKos.dart';
 import 'package:koskaki/screens/Owner/Edit_kost.dart';
 import 'package:koskaki/service/api_service.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DetailKostPage extends StatefulWidget {
   final Map<String, dynamic> kost;
@@ -595,6 +598,46 @@ class _DetailKostPageState extends State<DetailKostPage> {
     return text;
   }
 
+  double getLatitude() {
+    final d = detail ?? widget.kost;
+
+    return double.tryParse(
+      d['latitude']?.toString() ?? "",
+    ) ??
+        -6.966667;
+  }
+
+  double getLongitude() {
+    final d = detail ?? widget.kost;
+
+    return double.tryParse(
+      d['longitude']?.toString() ?? "",
+    ) ??
+        110.416664;
+  }
+
+  Future<void> openGoogleMaps() async {
+    final d = detail ?? widget.kost;
+
+    final link = d['google_maps_link']?.toString() ?? "";
+
+    if (link.isEmpty) {
+      showMessage("Link Google Maps tidak tersedia");
+      return;
+    }
+
+    final uri = Uri.parse(link);
+
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+    } else {
+      showMessage("Gagal membuka Google Maps");
+    }
+  }
+
   String getNearbyName(dynamic item) {
     if (item is! Map) return "-";
   
@@ -1151,6 +1194,8 @@ class _DetailKostPageState extends State<DetailKostPage> {
                     nearbyPlacesSection(items: nearbyPlaces),
 
                     descriptionSection(description),
+
+                    mapSection(),
 
                     facilitySection(
                       title: "Fasilitas Kost",
@@ -1739,6 +1784,98 @@ class _DetailKostPageState extends State<DetailKostPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget mapSection() {
+
+    final lat = getLatitude();
+    final lng = getLongitude();
+
+    return sectionCard(
+      title: "Lokasi Kost",
+      icon: Icons.map_outlined,
+      children: [
+
+        ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+
+          child: SizedBox(
+            height: 240,
+
+            child: FlutterMap(
+
+              options: MapOptions(
+                initialCenter: LatLng(lat, lng),
+                initialZoom: 15,
+
+                onTap: (_, __) {
+                  openGoogleMaps();
+                },
+              ),
+
+              children: [
+
+                TileLayer(
+                  urlTemplate:
+                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.koskaki',
+                ),
+
+                MarkerLayer(
+                  markers: [
+
+                    Marker(
+                      point: LatLng(lat, lng),
+
+                      width: 80,
+                      height: 80,
+
+                      child: const Icon(
+                        Icons.location_on,
+                        color: Colors.red,
+                        size: 42,
+                      ),
+                    ),
+
+                  ],
+                ),
+
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 14),
+
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+
+          child: ElevatedButton.icon(
+
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryColor,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+
+            onPressed: openGoogleMaps,
+
+            icon: const Icon(Icons.map_rounded),
+
+            label: const Text(
+              "Buka di Google Maps",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+
+      ],
     );
   }
 
