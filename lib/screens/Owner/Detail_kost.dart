@@ -131,7 +131,7 @@ class _DetailKostPageState extends State<DetailKostPage> {
         setState(() {
           detail = Map<String, dynamic>.from(data);
           images = extractImages(data).take(15).toList();
-          nearbyPlaces = nearbyData;
+          nearbyPlaces = normalizeNearbyList(nearbyData);
           currentImageIndex = 0;
           isLoading = false;
         });
@@ -141,11 +141,13 @@ class _DetailKostPageState extends State<DetailKostPage> {
         setState(() {
           detail = Map<String, dynamic>.from(widget.kost);
           images = extractImages(widget.kost).take(15).toList();
-          nearbyPlaces = parseDynamicList(
-            widget.kost['nearby_places'] ??
-                widget.kost['nearbyPlaces'] ??
-                widget.kost['nearby'] ??
-                widget.kost['property_nearby_places'],
+          nearbyPlaces = normalizeNearbyList(
+            parseDynamicList(
+              widget.kost['nearby_places'] ??
+                  widget.kost['nearbyPlaces'] ??
+                  widget.kost['nearby'] ??
+                  widget.kost['property_nearby_places'],
+            ),
           );
           currentImageIndex = 0;
           isLoading = false;
@@ -160,11 +162,13 @@ class _DetailKostPageState extends State<DetailKostPage> {
       setState(() {
         detail = Map<String, dynamic>.from(widget.kost);
         images = extractImages(widget.kost).take(15).toList();
-        nearbyPlaces = parseDynamicList(
-          widget.kost['nearby_places'] ??
-              widget.kost['nearbyPlaces'] ??
-              widget.kost['nearby'] ??
-              widget.kost['property_nearby_places'],
+        nearbyPlaces = normalizeNearbyList(
+          parseDynamicList(
+            widget.kost['nearby_places'] ??
+                widget.kost['nearbyPlaces'] ??
+                widget.kost['nearby'] ??
+                widget.kost['property_nearby_places'],
+          ),
         );
         currentImageIndex = 0;
         isLoading = false;
@@ -211,6 +215,8 @@ class _DetailKostPageState extends State<DetailKostPage> {
       if (value['results'] is List) {
         return List<dynamic>.from(value['results']);
       }
+  
+      return [Map<String, dynamic>.from(value)];
     }
   
     if (value is String && value.trim().isNotEmpty && value != "null") {
@@ -221,6 +227,74 @@ class _DetailKostPageState extends State<DetailKostPage> {
     }
   
     return [];
+  }
+
+  String getNearbyId(dynamic item) {
+    if (item is! Map) return "";
+  
+    final map = Map<String, dynamic>.from(item);
+  
+    final place =
+        map['place'] ??
+        map['places'] ??
+        map['nearby_place'] ??
+        map['nearbyPlace'] ??
+        map['nearby_places'];
+  
+    if (place is Map) {
+      final placeMap = Map<String, dynamic>.from(place);
+  
+      final id =
+          placeMap['id'] ??
+          placeMap['place_id'] ??
+          placeMap['nearby_place_id'] ??
+          placeMap['nearby_places_id'];
+  
+      if (id != null && id.toString().trim().isNotEmpty) {
+        return id.toString();
+      }
+    }
+  
+    final id =
+        map['place_id'] ??
+        map['nearby_place_id'] ??
+        map['nearby_places_id'] ??
+        map['id'];
+  
+    if (id == null || id.toString() == "null") return "";
+  
+    return id.toString().trim();
+  }
+  
+  List<dynamic> normalizeNearbyList(List<dynamic> source) {
+    final List<dynamic> result = [];
+    final Set<String> keys = {};
+  
+    for (final item in source) {
+      if (item == null) continue;
+  
+      final id = getNearbyId(item);
+      final name = getNearbyName(item);
+      final type = getNearbyType(item);
+      final distance = getNearbyDistance(item);
+  
+      if ((name.trim().isEmpty || name == "-") &&
+          type.trim().isEmpty &&
+          distance.trim().isEmpty) {
+        continue;
+      }
+  
+      final key = id.isNotEmpty
+          ? "id:$id"
+          : "name:${name.toLowerCase()}-${type.toLowerCase()}-$distance";
+  
+      if (keys.contains(key)) continue;
+  
+      keys.add(key);
+      result.add(item);
+    }
+  
+    return result;
   }
 
   List<dynamic> extractImages(dynamic data) {
@@ -1650,41 +1724,79 @@ class _DetailKostPageState extends State<DetailKostPage> {
   }
 
   Widget nearbyPlacesSection({required List<dynamic> items}) {
+    final fixedItems = normalizeNearbyList(items);
+  
     return sectionCard(
       title: "Jarak Dengan Transportasi",
       icon: Icons.near_me_outlined,
       children: [
-        if (items.isEmpty)
+        if (fixedItems.isEmpty)
           emptyMiniState(
             icon: Icons.location_off_outlined,
             text: "Jarak dengan transportasi belum ditambahkan",
           )
         else
           Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                height: 132,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-
-                    final name = getNearbyName(item);
-                    final type = getNearbyType(item);
-                    final distance = getNearbyDistance(item);
-                    final icon = getNearbyIcon(type, name);
-
-                    return nearbyPlaceCard(
-                      name: name,
-                      type: type,
-                      distance: distance,
-                      icon: icon,
-                    );
-                  },
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                decoration: BoxDecoration(
+                  color: softGreen.withOpacity(0.75),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: primaryColor.withOpacity(0.08)),
                 ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      color: primaryColor,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "${fixedItems.length} tempat terdekat ditampilkan",
+                        style: TextStyle(
+                          color: primaryColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+  
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final itemWidth = fixedItems.length == 1
+                      ? constraints.maxWidth
+                      : (constraints.maxWidth - 10) / 2;
+  
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: fixedItems.map((item) {
+                      final name = getNearbyName(item);
+                      final type = getNearbyType(item);
+                      final distance = getNearbyDistance(item);
+                      final icon = getNearbyIcon(type, name);
+  
+                      return SizedBox(
+                        width: itemWidth,
+                        child: nearbyPlaceCard(
+                          name: name,
+                          type: type,
+                          distance: distance,
+                          icon: icon,
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
               ),
             ],
           ),
@@ -1698,22 +1810,35 @@ class _DetailKostPageState extends State<DetailKostPage> {
     required String distance,
     required IconData icon,
   }) {
+    final hasType = type.trim().isNotEmpty && type != "null";
+    final hasDistance = distance.trim().isNotEmpty;
+  
     return Container(
-      width: 215,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [const Color(0xFFF4F6FA), softGreen.withOpacity(0.65)],
+          colors: [
+            const Color(0xFFF4F6FA),
+            softGreen.withOpacity(0.68),
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.035),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 height: 42,
@@ -1724,63 +1849,88 @@ class _DetailKostPageState extends State<DetailKostPage> {
                 ),
                 child: Icon(icon, color: Colors.white, size: 22),
               ),
-              const Spacer(),
-              if (type.trim().isNotEmpty && type != "null")
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.85),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: primaryColor.withOpacity(0.08)),
-                  ),
-                  child: Text(
-                    normalizeText(type),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: primaryColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
+  
+              const SizedBox(width: 8),
+  
+              if (hasType)
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.90),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: primaryColor.withOpacity(0.08),
+                        ),
+                      ),
+                      child: Text(
+                        normalizeText(type),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: primaryColor,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                )
+              else
+                const Spacer(),
             ],
           ),
-          const SizedBox(height: 13),
+  
+          const SizedBox(height: 12),
+  
           Text(
-            name,
+            name == "-" || name.trim().isEmpty
+                ? "Lokasi Terdekat"
+                : normalizeText(name),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.black,
               fontWeight: FontWeight.w900,
-              fontSize: 14,
-              height: 1.2,
+              fontSize: 13.5,
+              height: 1.22,
             ),
           ),
-          const Spacer(),
-          Row(
-            children: [
-              Icon(Icons.route_rounded, color: primaryColor, size: 17),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  distance.trim().isEmpty
-                      ? "Jarak belum tersedia"
-                      : "$distance KM dari kos",
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+  
+          const SizedBox(height: 12),
+  
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.88),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.route_rounded, color: primaryColor, size: 17),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    hasDistance ? "$distance KM dari kos" : "Jarak belum tersedia",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 11.5,
+                      height: 1.25,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
