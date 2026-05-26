@@ -28,7 +28,7 @@ class _AddKostPageState extends State<AddKostPage> {
   final monthlyPriceController = TextEditingController();
   final yearlyPriceController = TextEditingController();
 
-  final nearbyDistanceController = TextEditingController();
+  final Map<String, TextEditingController> nearbyDistanceControllers = {};
 
   final Color primaryColor = const Color(0xFF0A0E50);
   final Color softGreen = const Color(0xFFEAF5EB);
@@ -43,7 +43,7 @@ class _AddKostPageState extends State<AddKostPage> {
   List<Map<String, dynamic>> places = [];
 
   int? selectedCityId;
-  Map<String, dynamic>? selectedNearbyPlace;
+  List<Map<String, dynamic>> selectedNearbyPlaces = [];
   double? selectedLatitude;
   double? selectedLongitude;
 
@@ -105,7 +105,9 @@ class _AddKostPageState extends State<AddKostPage> {
     monthlyPriceController.dispose();
     yearlyPriceController.dispose();
 
-    nearbyDistanceController.dispose();
+    for (final controller in nearbyDistanceControllers.values) {
+      controller.dispose();
+    }
 
     for (final item in kostRules) {
       item["title"]?.dispose();
@@ -120,6 +122,25 @@ class _AddKostPageState extends State<AddKostPage> {
     super.dispose();
   }
 
+
+  String getPlaceIdString(Map<String, dynamic> item) {
+    return item['id'].toString();
+  }
+  
+  bool isNearbySelected(Map<String, dynamic> item) {
+    final id = getPlaceIdString(item);
+    return selectedNearbyPlaces.any((place) => getPlaceIdString(place) == id);
+  }
+  
+  void clearNearbyPlaces() {
+    for (final controller in nearbyDistanceControllers.values) {
+      controller.dispose();
+    }
+  
+    nearbyDistanceControllers.clear();
+    selectedNearbyPlaces.clear();
+  }
+  
   Future<void> loadCities() async {
     try {
       final response = await http.get(
@@ -174,8 +195,7 @@ class _AddKostPageState extends State<AddKostPage> {
     setState(() {
       isLoadingPlaces = true;
       places = [];
-      selectedNearbyPlace = null;
-      nearbyDistanceController.clear();
+      clearNearbyPlaces();
     });
 
     try {
@@ -445,40 +465,40 @@ class _AddKostPageState extends State<AddKostPage> {
     required String token,
   }) async {
     try {
-      if (selectedNearbyPlace == null) {
+      if (selectedNearbyPlaces.isEmpty) {
         debugPrint("NEARBY PLACE DILEWATI: belum pilih tempat");
         return true;
       }
   
-      final placeId = selectedNearbyPlace!['id'];
+      final List<Map<String, dynamic>> payloadPlaces = [];
   
-      final distanceText = nearbyDistanceController.text
-          .trim()
-          .replaceAll(',', '.');
+      for (final place in selectedNearbyPlaces) {
+        final id = getPlaceIdString(place);
+        final controller = nearbyDistanceControllers[id];
   
-      if (placeId == null || distanceText.isEmpty) {
-        showMessage("Pilih lokasi terdekat dan isi jaraknya");
-        return false;
-      }
+        final distanceText = cleanDistance(controller?.text.trim() ?? "");
   
-      final distance = double.tryParse(distanceText);
+        if (distanceText.isEmpty) {
+          showMessage("Isi jarak untuk ${getPlaceName(place)}");
+          return false;
+        }
   
-      if (distance == null) {
-        showMessage("Jarak lokasi terdekat harus berupa angka");
-        return false;
+        final distance = double.tryParse(distanceText);
+  
+        if (distance == null) {
+          showMessage("Jarak ${getPlaceName(place)} harus berupa angka");
+          return false;
+        }
+  
+        payloadPlaces.add({
+          "place_id": place["id"],
+          "distance": distance,
+        });
       }
   
       final body = {
-        "places": [
-          {
-            "place_id": placeId,
-            "distance": distance,
-          }
-        ]
+        "places": payloadPlaces,
       };
-  
-      debugPrint("UPLOAD NEARBY PLACE URL:");
-      debugPrint("${ApiService.baseUrl}/properties/$propertyId/nearby-places");
   
       debugPrint("UPLOAD NEARBY PLACE BODY:");
       debugPrint(jsonEncode(body));
@@ -525,15 +545,15 @@ class _AddKostPageState extends State<AddKostPage> {
       return;
     }
 
-    final bool hasNearbyInput =
-        selectedNearbyPlace != null ||
-        nearbyDistanceController.text.trim().isNotEmpty;
-
-    if (hasNearbyInput) {
-      if (selectedNearbyPlace == null ||
-          nearbyDistanceController.text.trim().isEmpty) {
-        showMessage("Pilih transportasi terdekat dan isi jaraknya");
-        return;
+    if (selectedNearbyPlaces.isNotEmpty) {
+      for (final place in selectedNearbyPlaces) {
+        final id = getPlaceIdString(place);
+        final controller = nearbyDistanceControllers[id];
+    
+        if ((controller?.text.trim() ?? "").isEmpty) {
+          showMessage("Isi jarak untuk ${getPlaceName(place)}");
+          return;
+        }
       }
     }
 
@@ -1329,8 +1349,7 @@ class _AddKostPageState extends State<AddKostPage> {
         setState(() {
           selectedCityId = cityId;
           places = [];
-          selectedNearbyPlace = null;
-          nearbyDistanceController.clear();
+          clearNearbyPlaces();
         });
 
         print("SELECTED CITY ID:");
@@ -1344,6 +1363,10 @@ class _AddKostPageState extends State<AddKostPage> {
   }
 
   Widget nearbyPlaceInput() {
+    final availablePlaces = places.where((item) {
+      return !isNearbySelected(item);
+    }).toList();
+  
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -1369,15 +1392,15 @@ class _AddKostPageState extends State<AddKostPage> {
                   size: 18,
                 ),
               ),
-
+  
               const SizedBox(width: 10),
-
+  
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Transportasi Terdekat",
+                      "Nearby Places",
                       style: TextStyle(
                         color: primaryColor,
                         fontSize: 14,
@@ -1389,8 +1412,8 @@ class _AddKostPageState extends State<AddKostPage> {
                       selectedCityId == null
                           ? "Pilih kota terlebih dahulu"
                           : isLoadingPlaces
-                          ? "Mengambil data tempat..."
-                          : "Pilih tempat dari database",
+                              ? "Mengambil data tempat..."
+                              : "Bisa pilih lebih dari satu tempat",
                       style: TextStyle(
                         color: Colors.grey.shade600,
                         fontSize: 11.5,
@@ -1400,15 +1423,13 @@ class _AddKostPageState extends State<AddKostPage> {
                   ],
                 ),
               ),
-
-              if (selectedNearbyPlace != null ||
-                  nearbyDistanceController.text.trim().isNotEmpty)
+  
+              if (selectedNearbyPlaces.isNotEmpty)
                 IconButton(
-                  tooltip: "Kosongkan",
+                  tooltip: "Kosongkan semua",
                   onPressed: () {
                     setState(() {
-                      selectedNearbyPlace = null;
-                      nearbyDistanceController.clear();
+                      clearNearbyPlaces();
                     });
                   },
                   icon: const Icon(
@@ -1419,24 +1440,24 @@ class _AddKostPageState extends State<AddKostPage> {
                 ),
             ],
           ),
-
+  
           const SizedBox(height: 14),
-
+  
           DropdownSearch<Map<String, dynamic>>(
             enabled: selectedCityId != null && !isLoadingPlaces,
-            items: places,
-            selectedItem: selectedNearbyPlace,
+            items: availablePlaces,
+            selectedItem: null,
             compareFn: (item1, item2) {
               return item1['id'] == item2['id'];
             },
             itemAsString: (item) {
               final type = getPlaceType(item);
               final name = getPlaceName(item);
-
+  
               if (type.isEmpty) {
                 return name;
               }
-
+  
               return "$type - $name";
             },
             popupProps: const PopupProps.modalBottomSheet(
@@ -1450,10 +1471,10 @@ class _AddKostPageState extends State<AddKostPage> {
                 hintText: selectedCityId == null
                     ? "Pilih kota dulu"
                     : isLoadingPlaces
-                    ? "Mengambil tempat..."
-                    : places.isEmpty
-                    ? "Tempat belum tersedia"
-                    : "Pilih tempat terdekat",
+                        ? "Mengambil tempat..."
+                        : availablePlaces.isEmpty
+                            ? "Semua tempat sudah dipilih"
+                            : "Tambah nearby place",
                 prefixIcon: isLoadingPlaces
                     ? Padding(
                         padding: const EdgeInsets.all(14),
@@ -1492,81 +1513,115 @@ class _AddKostPageState extends State<AddKostPage> {
               ),
             ),
             onChanged: (value) {
+              if (value == null) return;
+  
+              final id = getPlaceIdString(value);
+  
               setState(() {
-                selectedNearbyPlace = value;
-                nearbyDistanceController.clear();
+                selectedNearbyPlaces.add(value);
+                nearbyDistanceControllers[id] = TextEditingController();
               });
-
-              print("SELECTED PLACE:");
-              print(selectedNearbyPlace);
+  
+              print("SELECTED NEARBY PLACES:");
+              print(selectedNearbyPlaces);
             },
           ),
-
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            child: selectedNearbyPlace == null
-                ? const SizedBox.shrink()
-                : Column(
-                    key: ValueKey(selectedNearbyPlace?['id']),
+  
+          const SizedBox(height: 14),
+  
+          if (selectedNearbyPlaces.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Text(
+                "Belum ada nearby place dipilih",
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+  
+          ...selectedNearbyPlaces.map((place) {
+            final id = getPlaceIdString(place);
+            final controller = nearbyDistanceControllers[id]!;
+  
+            return Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                children: [
+                  Row(
                     children: [
-                      const SizedBox(height: 14),
-
-                      nearbySmallTextField(
-                        label:
-                            "Jarak dari ${getPlaceName(selectedNearbyPlace!)}",
-                        hint: "Contoh: 2.5",
-                        controller: nearbyDistanceController,
-                        icon: Icons.social_distance_outlined,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        suffixText: "KM",
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
-                        ],
+                      Icon(
+                        Icons.place_rounded,
+                        color: primaryColor,
+                        size: 20,
                       ),
-
-                      const SizedBox(height: 10),
-
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
+  
+                      const SizedBox(width: 8),
+  
+                      Expanded(
+                        child: Text(
+                          getPlaceName(place),
+                          style: TextStyle(
+                            color: primaryColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.info_outline_rounded,
-                              size: 16,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                "Contoh: ${getPlaceName(selectedNearbyPlace!)} berjarak 3 KM dari kost",
-                                style: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 11.5,
-                                  height: 1.35,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
+                      ),
+  
+                      IconButton(
+                        onPressed: () {
+                          setState(() {
+                            nearbyDistanceControllers[id]?.dispose();
+                            nearbyDistanceControllers.remove(id);
+  
+                            selectedNearbyPlaces.removeWhere((item) {
+                              return getPlaceIdString(item) == id;
+                            });
+                          });
+                        },
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.red,
+                          size: 20,
                         ),
                       ),
                     ],
                   ),
-          ),
+  
+                  const SizedBox(height: 8),
+  
+                  nearbySmallTextField(
+                    label: "Jarak dari ${getPlaceName(place)}",
+                    hint: "Contoh: 2.5",
+                    controller: controller,
+                    icon: Icons.social_distance_outlined,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    suffixText: "KM",
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
         ],
       ),
     );
